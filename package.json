@@ -1,5 +1,5 @@
 {
-  "name": "cfmcptest",
+  "name": "comfyui-mcp",
   "version": "1.0.0",
   "scripts": {
     "start": "node dist/index.js",
