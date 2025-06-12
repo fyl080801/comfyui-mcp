@@ -1,1 +1,2 @@
 import "./generate"
+import "./prompt"
