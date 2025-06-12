@@ -1,4 +1,4 @@
-import { getRandomValues, randomInt } from "crypto"
+import { randomInt } from "crypto"
 
 export type PromptParams = {
   prompt: string

@@ -1,10 +1,13 @@
 // #!/usr/bin/env node
-import express, { Request, Response } from "express"
+
+import "./mcp"
+
+import express from "express"
 import { createProxyMiddleware } from "http-proxy-middleware"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StreamableMCPServer, COMFYUI_URL } from "./server.js"
+import { StreamableMCPServer } from "./server.js"
+import { COMFYUI_URL } from "./constants.js"
 
-// Default port
 let PORT = 3000
 
 // Parse command-line arguments for --port=XXXX
