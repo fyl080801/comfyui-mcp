@@ -7,18 +7,23 @@ import {
   InitializeRequestSchema
 } from "@modelcontextprotocol/sdk/types.js"
 import { randomUUID } from "crypto"
-import { Request, Response } from "express"
+import express, { Request, Response, Express } from "express"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 
 const SESSION_ID_HEADER_NAME = "mcp-session-id"
 const JSON_RPC = "2.0"
 
-const setups: ServerSetup[] = []
+type McpSetup = (server: McpServer) => void
+type ServerSetup = (server: Express) => void
+const setups: McpSetup[] = []
+const servers: ServerSetup[] = []
 
-type ServerSetup = (server: McpServer) => void
+export const setupMCP = (setup: McpSetup) => {
+  setups.push(setup)
+}
 
 export const setupServer = (setup: ServerSetup) => {
-  setups.push(setup)
+  servers.push(setup)
 }
 
 export class StreamableMCPServer {
@@ -200,4 +205,120 @@ export class StreamableMCPServer {
     }
     return isInitial(body)
   }
+}
+
+/**
+ * 另一种实现
+ */
+
+export interface McpServerEndpoint {
+  url: string
+  port: number
+}
+
+export const createServer = (): McpServer => {
+  const server = new McpServer({
+    name: "ComfyUI",
+    version: "0.1.0"
+  })
+
+  setups.forEach((setup) => {
+    setup(server)
+  })
+
+  return server
+}
+
+export const startStreamableHttpMcpServer = async (port?: number) => {
+  const app = express()
+
+  app.use(express.json())
+
+  const server = createServer()
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined
+  })
+
+  await server.connect(transport)
+
+  const handleError = (res: Response, err: Error) => {
+    console.log("Error MCP request:", err)
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal server error"
+        },
+        id: null
+      })
+    }
+  }
+
+  app.post("/mcp", async (req, res) => {
+    console.log("Receive MCP POST request:", req.body)
+
+    try {
+      await transport.handleRequest(req, res, req.body)
+    } catch (err) {
+      handleError(res, err as Error)
+    }
+  })
+
+  app.get("/mcp", async (req, res) => {
+    console.log("Receive MCP GET request:", req.params)
+
+    try {
+      await transport.handleRequest(req, res)
+    } catch (err) {
+      handleError(res, err as Error)
+    }
+  })
+
+  app.delete("/mcp", async (req, res) => {
+    console.log("Received MCP DELETE request:")
+
+    try {
+      await transport.handleRequest(req, res, req.body)
+    } catch (err) {
+      handleError(res, err as Error)
+    }
+  })
+
+  servers.forEach((setup) => {
+    setup(app)
+  })
+
+  const listenPort = Number(port || process.env.PORT || 3000)
+
+  const { resolve, reject, promise } = Promise.withResolvers()
+
+  const appServer = app.listen(listenPort, (error) => {
+    if (error) {
+      console.error("Failed to start server:", error)
+      reject(error)
+      return
+    }
+
+    const endpoint: McpServerEndpoint = {
+      url: `http://localhost:${listenPort}/mcp`,
+      port: listenPort
+    }
+
+    console.log(
+      `Code Runner Streamable HTTP MCP Server listening at ${endpoint.url}`
+    )
+
+    resolve(endpoint)
+  })
+
+  // Handle server errors
+  appServer.on("error", (error) => {
+    console.error("Server error:", error)
+    reject(error)
+  })
+
+  return promise
 }

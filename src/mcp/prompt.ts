@@ -1,5 +1,5 @@
 import { randomInt } from "crypto"
-import { setupServer } from "../server"
+import { setupMCP } from "../server"
 
 export type PromptParams = {
   prompt: string
@@ -318,7 +318,7 @@ export default (params: PromptParams) => {
   }
 }
 
-setupServer((server) => {
+setupMCP((server) => {
   const sd = `/no_think
 <核心原则>  
 [按优先级从高到低排列]  

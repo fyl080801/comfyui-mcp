@@ -1,5 +1,5 @@
 import z from "zod"
-import { setupServer } from "../server"
+import { setupMCP } from "../server"
 import { randomUUID } from "crypto"
 import prompt from "./prompt"
 import { jsonTryParse } from "../utils"
@@ -7,7 +7,7 @@ import { WebSocket } from "ws"
 import { COMFYUI_URL, COMFYUI_WS } from "../constants"
 import axios from "axios"
 
-setupServer((server) => {
+setupMCP((server) => {
   server.registerTool(
     "comfyui_generate",
     {
