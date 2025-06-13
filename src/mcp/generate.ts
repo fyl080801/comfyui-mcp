@@ -4,7 +4,7 @@ import { randomUUID } from "crypto"
 import prompt from "./prompt"
 import { jsonTryParse } from "../utils"
 import { WebSocket } from "ws"
-import { COMFYUI_URL, COMFYUI_WS } from "../constants"
+import { COMFYUI_URL, COMFYUI_WS, SERVER_HOST } from "../constants"
 import axios from "axios"
 
 setupMCP((server) => {
@@ -41,7 +41,7 @@ setupMCP((server) => {
 
         const start = new Date().valueOf()
         const timer = setInterval(() => {
-          if (new Date().valueOf() - start < 5 * 60 * 1000) return
+          if (new Date().valueOf() - start < 8 * 60 * 1000) return
 
           clearInterval(timer)
           ws.close()
@@ -91,7 +91,10 @@ setupMCP((server) => {
         return promise
       }
 
-      const images = await executeWs()
+      const images = await executeWs().catch((err) => {
+        console.log(err)
+        return []
+      })
 
       return {
         content: images.map((image) => {
@@ -99,7 +102,7 @@ setupMCP((server) => {
             type: "resource",
             resource: {
               text: "image",
-              uri: `http://localhost:3000/view?filename=${image.filename}`
+              uri: `${SERVER_HOST}/view?filename=${image.filename}`
             }
           }
         })
