@@ -36,4 +36,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/comfyui-mcp:latest
+          tags: ghcr.io/fyl080801/comfyui-mcp:latest
