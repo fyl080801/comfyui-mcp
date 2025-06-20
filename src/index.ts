@@ -6,10 +6,16 @@ import "./middleware"
 import express from "express"
 import { createProxyMiddleware } from "http-proxy-middleware"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StreamableMCPServer, startStreamableHttpMcpServer } from "./server.js"
+import {
+  StreamableMCPServer,
+  startFastMcp,
+  startStreamableHttpMcpServer
+} from "./server.js"
 import { COMFYUI_URL } from "./constants.js"
 
-startStreamableHttpMcpServer()
+// startStreamableHttpMcpServer()
+
+startFastMcp()
 
 // let PORT = 3000
 

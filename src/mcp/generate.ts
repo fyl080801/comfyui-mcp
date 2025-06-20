@@ -1,5 +1,5 @@
 import z from "zod"
-import { setupMCP } from "../server"
+import { setupMCP, useFastMcp } from "../server"
 import { randomUUID } from "crypto"
 import prompt from "./prompt"
 import { jsonTryParse } from "../utils"
@@ -7,22 +7,20 @@ import { WebSocket } from "ws"
 import { COMFYUI_URL, COMFYUI_WS, SERVER_HOST } from "../constants"
 import axios from "axios"
 
-setupMCP((server) => {
-  server.registerTool(
-    "comfyui_generate",
-    {
-      description: "comfyui generate image",
-      inputSchema: {
-        prompt: z.string().describe("prompt, must in english"),
-        negative_prompt: z
-          .string()
-          .optional()
-          .describe("negative prompt, must in english"),
-        width: z.number().optional().describe("image width"),
-        height: z.number().optional().describe("image height")
-      }
-    },
-    async (params) => {
+useFastMcp((server) => {
+  server.addTool({
+    name: "comfyui_generate",
+    description: "comfyui generate image",
+    parameters: z.object({
+      prompt: z.string().describe("prompt, must in english"),
+      negative_prompt: z
+        .string()
+        .optional()
+        .describe("negative prompt, must in english"),
+      width: z.number().optional().describe("image width"),
+      height: z.number().optional().describe("image height")
+    }),
+    execute: async (params) => {
       const clientId = randomUUID()
 
       const executeGen = async () => {
@@ -131,5 +129,26 @@ setupMCP((server) => {
       //     }))
       // }
     }
-  )
+  })
 })
+
+// setupMCP((server) => {
+//   server.registerTool(
+//     "comfyui_generate",
+//     {
+//       description: "comfyui generate image",
+//       inputSchema: {
+//         prompt: z.string().describe("prompt, must in english"),
+//         negative_prompt: z
+//           .string()
+//           .optional()
+//           .describe("negative prompt, must in english"),
+//         width: z.number().optional().describe("image width"),
+//         height: z.number().optional().describe("image height")
+//       }
+//     },
+//     async (args) => {
+//       return await execute(args)
+//     }
+//   )
+// })

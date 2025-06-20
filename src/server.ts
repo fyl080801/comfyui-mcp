@@ -9,6 +9,7 @@ import {
 import { randomUUID } from "crypto"
 import express, { Request, Response, Express } from "express"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { FastMCP } from "fastmcp"
 
 const SESSION_ID_HEADER_NAME = "mcp-session-id"
 const JSON_RPC = "2.0"
@@ -229,6 +230,8 @@ export const createServer = (): McpServer => {
   return server
 }
 
+export const startSSE = () => {}
+
 export const startStreamableHttpMcpServer = async (port?: number) => {
   const app = express()
 
@@ -256,6 +259,12 @@ export const startStreamableHttpMcpServer = async (port?: number) => {
       })
     }
   }
+
+  // app.post("/sse", async (req, res) => {
+  //   server.connect(transport)
+
+  //   await transport.handlePostMessage(req, res, req.body)
+  // })
 
   app.post("/mcp", async (req, res) => {
     console.log("Receive MCP POST request:", req.body)
@@ -321,4 +330,34 @@ export const startStreamableHttpMcpServer = async (port?: number) => {
   })
 
   return promise
+}
+
+// 使用 fast mcp 实现
+
+type FastMcpSetup = (server: FastMCP) => void
+const fastsetups: FastMcpSetup[] = []
+
+export const startFastMcp = (port?: number) => {
+  const server = new FastMCP({
+    name: "ComfyUI",
+    version: "0.1.0"
+  })
+
+  fastsetups.forEach((setup) => {
+    setup(server)
+  })
+
+  const listenPort = Number(port || process.env.PORT || 3000)
+
+  server.start({
+    transportType: "httpStream",
+    httpStream: {
+      port: listenPort,
+      endpoint: "/mcp"
+    }
+  })
+}
+
+export const useFastMcp = (setup: FastMcpSetup) => {
+  fastsetups.push(setup)
 }
