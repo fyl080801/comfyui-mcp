@@ -20,7 +20,7 @@ useFastMcp((server) => {
       width: z.number().optional().describe("image width"),
       height: z.number().optional().describe("image height")
     }),
-    execute: async (params) => {
+    execute: async (params, context) => {
       const clientId = randomUUID()
 
       const executeGen = async () => {
@@ -70,6 +70,14 @@ useFastMcp((server) => {
             ws.close()
 
             resolve(data?.data?.output?.images || [])
+          }
+
+          if (data.type === "progress") {
+            const { data: progress } = data
+            context.reportProgress({
+              progress: +progress.value,
+              total: +progress.max
+            })
           }
           // {"type": "status", "data": {"status": {"exec_info": {"queue_remaining": 0}}, "sid": "3b97fe3c916c4506a700973339641bdd"}}
           // {"type": "execution_start", "data": {"prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d", "timestamp": 1749660341752}}
