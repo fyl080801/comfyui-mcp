@@ -1,11 +1,139 @@
 import z from "zod"
-import { setupMCP, useFastMcp } from "../server"
+import { useFastMcp } from "../server.js"
 import { randomUUID } from "crypto"
-import prompt from "./prompt"
-import { jsonTryParse } from "../utils"
+import prompt from "./prompt.js"
+import { jsonTryParse } from "../utils.js"
 import { WebSocket } from "ws"
-import { COMFYUI_URL, COMFYUI_WS, SERVER_HOST } from "../constants"
+import { COMFYUI_HOST } from "../constants.js"
 import axios from "axios"
+import { imageContent } from "fastmcp"
+import { uploadToS3 } from "./s3.js"
+
+type ComfyuiWebsocketOptions = {
+  host: string
+  clientId: string
+  timeout?: number
+}
+
+type ComfyuiEvents =
+  | "status"
+  | "execution_start"
+  | "execution_cached"
+  | "progress"
+  | "executing"
+  | "executed"
+
+type ComfyuiEventHandler = (event: Event & { data?: any }) => void
+
+class ComfyuiEvent extends Event {
+  public data: any
+
+  constructor(type: string, init: EventInit & { data: any }) {
+    super(type, init)
+
+    this.data = init.data
+  }
+}
+
+class ComfyuiWebsocket {
+  private websocket?: WebSocket | null
+  private host: string
+  private clientId: string
+  private timeout: number
+  private timer?: NodeJS.Timeout
+
+  private events: EventTarget = new EventTarget()
+
+  private async executeGen(params: any) {
+    const response = await axios.post(`http://${this.host}/prompt`, {
+      client_id: this.clientId,
+      prompt: prompt(params)
+    })
+
+    if (response.status !== 200) throw new Error("ComfyUI调用失败")
+  }
+
+  constructor(options: ComfyuiWebsocketOptions) {
+    const { host, clientId, timeout = 8 * 60 * 1000 } = options
+
+    this.host = host
+    this.timeout = timeout
+    this.clientId = clientId
+  }
+
+  async open(params: any) {
+    const { resolve, reject, promise } = Promise.withResolvers<{
+      node: string
+      display_node: string
+      output: {
+        images: Array<{
+          filename: string
+          subfolder: string
+          type: string
+        }>
+      }
+      prompt_id: string
+    }>()
+
+    this.websocket = new WebSocket(
+      `ws://${this.host}/ws?clientId=${this.clientId}`
+    )
+
+    this.websocket.addEventListener("open", () => {
+      const start = new Date().valueOf()
+      this.timer = setInterval(() => {
+        if (new Date().valueOf() - start < this.timeout) return
+
+        this.close()
+
+        reject(new Error("comfyui timeout"))
+      }, 1000)
+
+      this.executeGen(params)
+    })
+
+    this.websocket.addEventListener("message", ({ data }) => {
+      const eventData = jsonTryParse(data?.toString())
+
+      if (
+        [
+          "status",
+          "execution_start",
+          "execution_cached",
+          "progress",
+          "executing"
+        ].includes(eventData?.type)
+      ) {
+        this.events.dispatchEvent(
+          new ComfyuiEvent(eventData?.type, {
+            data: eventData
+          })
+        )
+      }
+
+      if (eventData?.type === "executed") {
+        this.close()
+        resolve(eventData?.data)
+      }
+    })
+
+    return promise
+  }
+
+  close() {
+    clearInterval(this.timer)
+    this.websocket?.close()
+    this.websocket = null
+  }
+
+  on(event: ComfyuiEvents, handler: ComfyuiEventHandler) {
+    this.events.addEventListener(event, handler)
+  }
+
+  off(event: ComfyuiEvents, handler: ComfyuiEventHandler) {
+    this.events.removeEventListener(event, handler)
+  }
+}
 
 useFastMcp((server) => {
   server.addTool({
@@ -23,140 +151,52 @@ useFastMcp((server) => {
     execute: async (params, context) => {
       const clientId = randomUUID()
 
-      const executeGen = async () => {
-        const response = await axios.post(`${COMFYUI_URL}/prompt`, {
-          client_id: clientId,
-          prompt: prompt(params)
-        })
-
-        if (response.status !== 200) throw new Error("ComfyUI调用失败")
-      }
-
-      const executeWs = () => {
-        const { resolve, reject, promise } = Promise.withResolvers<any[]>()
-
-        const ws = new WebSocket(`${COMFYUI_WS}/ws?clientId=${clientId}`)
-
-        const start = new Date().valueOf()
-        const timer = setInterval(() => {
-          if (new Date().valueOf() - start < 8 * 60 * 1000) return
-
-          clearInterval(timer)
-          ws.close()
-
-          reject(new Error("comfyui timeout"))
-        }, 1000)
-
-        ws.addEventListener("open", () => {
-          executeGen()
-        })
-
-        ws.addEventListener("message", (ev) => {
-          const data: any = jsonTryParse(ev.data?.toString())
-
-          // if (
-          //   ![
-          //     "status",
-          //     "executing",
-          //     "execution_start",
-          //     "executed",
-          //     "progress"
-          //   ].includes(data?.type)
-          // )
-          //   return
-
-          if (data?.type === "executed") {
-            clearInterval(timer)
-            ws.close()
-
-            resolve(data?.data?.output?.images || [])
-          }
-
-          if (data.type === "progress") {
-            const { data: progress } = data
-            context.reportProgress({
-              progress: +progress.value,
-              total: +progress.max
-            })
-          }
-          // {"type": "status", "data": {"status": {"exec_info": {"queue_remaining": 0}}, "sid": "3b97fe3c916c4506a700973339641bdd"}}
-          // {"type": "execution_start", "data": {"prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d", "timestamp": 1749660341752}}
-          // {"type": "execution_cached", "data": {"nodes": [], "prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d", "timestamp": 1749660341766}}
-          // {"type": "progress", "data": {"value": 25, "max": 25, "prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d", "node": "31"}}
-          // {"type": "executing", "data": {"node": "32", "display_node": "32", "prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d"}}
-          // {"type": "executed", "data": {"node": "144", "display_node": "144", "output": {"images": [{"filename": "ComfyUI_Export_00101_.png", "subfolder": "", "type": "output"}]}, "prompt_id": "548eeeca-87f3-4c18-87d1-afd68cfae89d"}}
-        })
-
-        ws.addEventListener("error", (e) => {
-          clearInterval(timer)
-          ws.close()
-
-          reject(new Error(e?.message))
-        })
-
-        return promise
-      }
-
-      const images = await executeWs().catch((err) => {
-        console.log(err)
-        return []
+      const ws = new ComfyuiWebsocket({
+        host: COMFYUI_HOST,
+        clientId
       })
 
-      return {
-        content: images.map((image) => {
-          return {
-            type: "resource",
-            resource: {
-              text: "image",
-              uri: `${SERVER_HOST}/view?filename=${image.filename}`
-            }
+      ws.on("progress", ({ data }) => {
+        const { data: progress } = data
+
+        context.reportProgress({
+          progress: +progress.value,
+          total: +progress.max
+        })
+      })
+
+      const result = await ws.open(params)
+
+      const resources = []
+      for (const image of result?.output?.images || []) {
+        const imageUrl = `http://${COMFYUI_HOST}/view?filename=${image.filename}`
+
+        const imageBuffer = await axios.get(imageUrl, {
+          responseType: "arraybuffer"
+        })
+
+        const s3Url = await uploadToS3(image.filename, imageBuffer.data)
+
+        resources.push(s3Url)
+
+        await context.streamContent({
+          type: "resource",
+          resource: {
+            uri: s3Url,
+            mimeType: "image/png"
           }
         })
       }
 
-      // const results = await Promise.all(
-      //   images.map(async (image) => {
-      //     const downloaded = await downloadImageAsBase64(
-      //       `${COMFYUI_URL}/view?filename=${image.filename}`
-      //     ).catch((err) => {
-      //       console.log(err)
-      //       return null
-      //     })
-
-      //     return downloaded
-      //   })
-      // )
-
-      // return {
-      //   content: results
-      //     .filter((item) => item !== null)
-      //     .map((item) => ({
-      //       type: "image",
-      //       data: item.base64,
-      //       mimeType: item.contentType
-      //     }))
-      // }
+      return {
+        content: resources.map((item) => ({
+          type: "resource",
+          resource: {
+            text: "image",
+            uri: item
+          }
+        }))
+      }
     }
   })
 })
-
-// setupMCP((server) => {
-//   server.registerTool(
-//     "comfyui_generate",
-//     {
-//       description: "comfyui generate image",
-//       inputSchema: {
-//         prompt: z.string().describe("prompt, must in english"),
-//         negative_prompt: z
-//           .string()
-//           .optional()
-//           .describe("negative prompt, must in english"),
-//         width: z.number().optional().describe("image width"),
-//         height: z.number().optional().describe("image height")
-//       }
-//     },
-//     async (args) => {
-//       return await execute(args)
-//     }
-//   )
-// })

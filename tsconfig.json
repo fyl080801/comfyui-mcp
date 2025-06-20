@@ -1,6 +1,13 @@
 {
+  "extends": "@tsconfig/recommended",
   "compilerOptions": {
     "target": "ES2022",
+    "lib": [
+      "ES2021",
+      "ES2022.Object",
+      "ESNext",
+      "DOM"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "esModuleInterop": true,
@@ -11,20 +18,14 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
+    "types": [
+      "jest",
+      "node"
     ],
     "allowJs": true,
     "incremental": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
   },
   "include": [
     "src/**/*",

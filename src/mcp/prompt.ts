@@ -1,5 +1,5 @@
 import { randomInt } from "crypto"
-import { setupMCP } from "../server"
+import { useFastMcp } from "../server.js"
 
 export type PromptParams = {
   prompt: string
@@ -318,7 +318,7 @@ export default (params: PromptParams) => {
   }
 }
 
-setupMCP((server) => {
+useFastMcp((server) => {
   const sd = `/no_think
 <核心原则>  
 [按优先级从高到低排列]  
@@ -337,18 +337,26 @@ StableDiffusion是一款利用深度学习的文生图模型，支持通过使�
 仿照例子，给出一套详细描述以下内容的prompt。直接开始给出prompt不需要用自然语言描述：
   `
 
-  server.prompt("StableDiffusion", () => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: sd
-          }
-        }
-      ],
-      description: `生成用于 StableDiffusion 的提示词`
+  // "StableDiffusion", () => {
+  //     return {
+  //       messages: [
+  //         {
+  //           role: "assistant",
+  //           content: {
+  //             type: "text",
+  //             text: sd
+  //           }
+  //         }
+  //       ],
+  //       description: `生成用于 StableDiffusion 的提示词`
+  //     }
+  //   }
+
+  server.addPrompt({
+    name: "StableDiffusion",
+    description: "StableDiffusion 绘图工具",
+    load: async () => {
+      return sd
     }
   })
 })
