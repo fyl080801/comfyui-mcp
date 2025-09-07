@@ -7,9 +7,6 @@ export const startFastMcp = (port?: number) => {
   const server = new FastMCP({
     name: "ComfyUI",
     version: "0.1.0"
-    // ping: {
-    //   enabled: true
-    // }
   })
 
   fastsetups.forEach((setup) => {

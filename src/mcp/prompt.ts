@@ -6,10 +6,19 @@ export type PromptParams = {
   negative_prompt?: string
   width?: number
   height?: number
+  steps?: number
+  cfg_scale: number
 }
 
 export default (params: PromptParams) => {
-  const { prompt, height, negative_prompt, width } = params
+  const {
+    prompt,
+    height,
+    negative_prompt,
+    width,
+    steps = 30,
+    cfg_scale = 7
+  } = params
 
   const seed = randomInt(9999999999999)
 
@@ -17,8 +26,8 @@ export default (params: PromptParams) => {
     2: {
       inputs: {
         seed: seed,
-        steps: 30,
-        cfg: 7,
+        steps: steps,
+        cfg: cfg_scale,
         sampler_name: "dpmpp_2m",
         scheduler: "karras",
         denoise: 1,
@@ -71,7 +80,7 @@ export default (params: PromptParams) => {
     },
     8: {
       inputs: {
-        ckpt_name: "waiNSFWIllustrious_v140.safetensors"
+        ckpt_name: "waiNSFWIllustrious_v150.safetensors"
       },
       class_type: "CheckpointLoaderSimple",
       _meta: {
@@ -168,7 +177,7 @@ export default (params: PromptParams) => {
     },
     79: {
       inputs: {
-        text: "<lora:Smooth_Booster_v3:1> <lora:iLLMythM4gicalL1nes:1> <lora:noobai_ep11_stabilizer_v0:1> <lora:NOOB_vp1_detailer_by_volnovik_v1:1>",
+        text: "<lora:Smooth_Booster_v3:1> <lora:iLLMythM4gicalL1nes:1> <lora:NOOB_vp1_detailer_by_volnovik_v1:1>",
         speak_and_recognation: {
           __value__: [false, true]
         },
@@ -187,21 +196,14 @@ export default (params: PromptParams) => {
               active: true,
               clipStrength: "0.60",
               expanded: false
-            },
-            {
-              name: "noobai_ep11_stabilizer_v0",
-              strength: "0.50",
-              active: true,
-              clipStrength: "0.50",
-              expanded: false
-            },
-            {
-              name: "NOOB_vp1_detailer_by_volnovik_v1",
-              strength: "0.60",
-              active: true,
-              clipStrength: "0.60",
-              expanded: false
             }
+            // {
+            //   name: "NOOB_vp1_detailer_by_volnovik_v1",
+            //   strength: "0.60",
+            //   active: true,
+            //   clipStrength: "0.60",
+            //   expanded: false
+            // }
           ]
         },
         model: ["8", 0],
@@ -319,7 +321,7 @@ export default (params: PromptParams) => {
 }
 
 useFastMcp((server) => {
-  const sd = `/no_think
+  const sd = `
 <核心原则>  
 [按优先级从高到低排列]  
 **全局规则**  
