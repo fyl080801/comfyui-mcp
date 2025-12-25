@@ -1,0 +1,773 @@
+/**
+ * Swagger/OpenAPI Documentation Configuration for ComfyUI-MCP Server
+ *
+ * This module provides comprehensive API documentation using Swagger/OpenAPI 3.0 specification.
+ * The documentation is available at /api-docs and includes RESTful API endpoints.
+ */
+
+import swaggerJSDoc from 'swagger-jsdoc'
+import type { ServiceConfig } from './config/index.js'
+
+/**
+ * Generate Swagger/OpenAPI specification dynamically from config
+ */
+export function createSwaggerSpec(services: ServiceConfig[]) {
+  const servicePaths: Record<string, any> = {}
+
+  // Generate paths for each service tool
+  services.forEach((service) => {
+    const path = `/api/v1/services/${service.name}`
+    const parameters: any[] = []
+
+    // Build parameters from service config
+    service.parameters.forEach((param) => {
+      const swaggerParam: any = {
+        name: param.name,
+        in: 'body',
+        description: param.description || `Parameter: ${param.name}`,
+        required: param.required || false,
+        schema: {
+          type: param.type || 'string',
+        },
+      }
+
+      // Add default value if present
+      if (param.default !== undefined) {
+        swaggerParam.schema.default = param.default
+      }
+
+      parameters.push(swaggerParam)
+    })
+
+    // POST endpoint for executing service
+    servicePaths[path] = {
+      post: {
+        tags: ['Services'],
+        summary: service.description || `Execute ${service.name} workflow`,
+        description:
+          service.description ||
+          `Execute ${service.name} workflow asynchronously. Returns a job_id for tracking.`,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: service.parameters.reduce((acc: any, param) => {
+                  acc[param.name] = {
+                    type: param.type || 'string',
+                    description: param.description,
+                  }
+                  if (param.default !== undefined) {
+                    acc[param.name].default = param.default
+                  }
+                  return acc
+                }, {}),
+                required: service.parameters.filter((p) => p.required).map((p) => p.name),
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Job created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/JobCreatedResponse',
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - invalid parameters',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Service not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '500': {
+            description: 'Internal server error',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+  })
+
+  // ============================================================================
+  // RESTful API Paths
+  // ============================================================================
+
+  const restPaths: Record<string, any> = {
+    // Services endpoints
+    '/api/v1/services': {
+      get: {
+        tags: ['Services'],
+        summary: 'List All Services',
+        description: 'Get a list of all available ComfyUI workflow services',
+        responses: {
+          '200': {
+            description: 'Services retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'number' },
+                    services: {
+                      type: 'array',
+                      items: {
+                        $ref: '#/components/schemas/ServiceInfo',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/services/{service_name}': {
+      get: {
+        tags: ['Services'],
+        summary: 'Get Service Details',
+        description: 'Get detailed information about a specific service including its parameters',
+        parameters: [
+          {
+            name: 'service_name',
+            in: 'path',
+            required: true,
+            description: 'Name of the service',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Service details retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ServiceDetails',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Service not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // Jobs endpoints
+    '/api/v1/jobs': {
+      get: {
+        tags: ['Jobs'],
+        summary: 'List Jobs',
+        description: 'List all ComfyUI jobs with optional filters',
+        parameters: [
+          {
+            name: 'service',
+            in: 'query',
+            required: false,
+            description: 'Filter by service name',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            description: 'Filter by status',
+            schema: {
+              type: 'string',
+              enum: ['pending', 'running', 'completed', 'failed', 'timeout', 'cancelled'],
+            },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            description: 'Maximum number of jobs to return',
+            schema: { type: 'number', default: 20 },
+          },
+          {
+            name: 'offset',
+            in: 'query',
+            required: false,
+            description: 'Offset for pagination',
+            schema: { type: 'number', default: 0 },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Jobs retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'number' },
+                    filters: {
+                      type: 'object',
+                      properties: {
+                        service: { type: 'string' },
+                        status: { type: 'string' },
+                        limit: { type: 'number' },
+                        offset: { type: 'number' },
+                      },
+                    },
+                    jobs: {
+                      type: 'array',
+                      items: {
+                        $ref: '#/components/schemas/JobSummary',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/jobs/{job_id}': {
+      get: {
+        tags: ['Jobs'],
+        summary: 'Get Job Status',
+        description: 'Query the status and progress of a ComfyUI job by job ID',
+        parameters: [
+          {
+            name: 'job_id',
+            in: 'path',
+            required: true,
+            description: 'The job ID to query',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Job status retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/JobStatus',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Job not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ['Jobs'],
+        summary: 'Cancel Job',
+        description: 'Cancel or delete a running/pending job',
+        parameters: [
+          {
+            name: 'job_id',
+            in: 'path',
+            required: true,
+            description: 'The job ID to cancel',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Job cancelled successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    job_id: { type: 'string' },
+                    status: { type: 'string', enum: ['cancelled'] },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Job not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/jobs/{job_id}/result': {
+      get: {
+        tags: ['Jobs'],
+        summary: 'Get Job Result',
+        description: 'Get the result of a completed job including images and metadata',
+        parameters: [
+          {
+            name: 'job_id',
+            in: 'path',
+            required: true,
+            description: 'The job ID to get results for',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Job result retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/JobResult',
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Job not completed or not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Job not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // System endpoints
+    '/api/v1/health': {
+      get: {
+        tags: ['System'],
+        summary: 'Health Check',
+        description: 'Check if ComfyUI service is available and get job statistics',
+        responses: {
+          '200': {
+            description: 'Health status retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: {
+                      type: 'string',
+                      enum: ['healthy', 'degraded', 'unhealthy'],
+                    },
+                    timestamp: { type: 'string', format: 'date-time' },
+                    services: {
+                      type: 'object',
+                      properties: {
+                        comfyui: { type: 'string', enum: ['available', 'unavailable'] },
+                        mcp: { type: 'string', enum: ['available'] },
+                        rest_api: { type: 'string', enum: ['available'] },
+                      },
+                    },
+                    jobs: {
+                      type: 'object',
+                      properties: {
+                        total: { type: 'number' },
+                        pending: { type: 'number' },
+                        running: { type: 'number' },
+                        completed: { type: 'number' },
+                        failed: { type: 'number' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '503': {
+            description: 'Service unavailable or unhealthy',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  // Merge all paths
+  const allPaths = { ...servicePaths, ...restPaths }
+
+  const options: swaggerJSDoc.Options = {
+    definition: {
+      openapi: '3.0.0',
+      info: {
+        title: 'ComfyUI MCP Server API',
+        version: '1.0.0',
+        description: `
+ComfyUI MCP Server - RESTful API for Async Job-based Workflow Execution
+
+This server exposes ComfyUI workflows as clean RESTful API endpoints with asynchronous job-based execution.
+
+## Features
+- **RESTful API Design**: Proper HTTP methods (GET, POST, DELETE) for resource-oriented operations
+- **Async Job Execution**: Submit jobs and get a \`job_id\` immediately for status polling
+- **Status Polling**: Query job status, progress, and results via dedicated endpoints
+- **Multiple Output Support**: Returns all images generated by a workflow
+- **Complete Metadata**: Includes execution time, node history, and parameters
+- **Progress Tracking**: Real-time progress updates during execution
+- **S3 Upload**: Optional image upload to AWS S3
+
+## RESTful API Endpoints
+
+### Services
+- \`GET /api/v1/services\` - List all available services
+- \`GET /api/v1/services/{service_name}\` - Get service details
+- \`POST /api/v1/services/{service_name}\` - Execute a workflow
+
+### Jobs
+- \`GET /api/v1/jobs\` - List jobs with filters
+- \`GET /api/v1/jobs/{job_id}\` - Get job status
+- \`GET /api/v1/jobs/{job_id}/result\` - Get job result
+- \`DELETE /api/v1/jobs/{job_id}\` - Cancel a job
+
+### System
+- \`GET /api/v1/health\` - Health check with statistics
+
+## Job Lifecycle
+1. **PENDING**: Job created, waiting to start
+2. **RUNNING**: WebSocket connected, execution in progress
+3. **COMPLETED**: Execution finished successfully
+4. **FAILED**: Execution failed with error
+5. **TIMEOUT**: Execution exceeded timeout
+6. **CANCELLED**: Job was cancelled
+
+## Usage Example
+
+\`\`\`bash
+# 1. List available services
+curl http://localhost:3000/api/v1/services
+
+# 2. Execute a service (e.g., text_to_image)
+curl -X POST http://localhost:3000/api/v1/services/text_to_image \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "prompt": "a beautiful sunset over the ocean"
+  }'
+
+# Response: { "job_id": "uuid", "status": "pending", ... }
+
+# 3. Query job status
+curl http://localhost:3000/api/v1/jobs/{job_id}
+
+# 4. Get job result (when completed)
+curl http://localhost:3000/api/v1/jobs/{job_id}/result
+\`\`\`
+
+## MCP Protocol
+The server also supports the MCP (Model Context Protocol) on port 8080 for AI agent integration.
+        `,
+        contact: {
+          name: 'ComfyUI MCP Server',
+        },
+        license: {
+          name: 'ISC',
+        },
+      },
+      servers: [
+        {
+          url: 'http://localhost:3000',
+          description: 'Development server (RESTful API + Swagger UI)',
+        },
+        {
+          url: 'http://localhost:8080',
+          description: 'MCP endpoint (AI agent protocol)',
+        },
+      ],
+      tags: [
+        {
+          name: 'Services',
+          description: 'Workflow execution endpoints',
+        },
+        {
+          name: 'Jobs',
+          description: 'Job status and result queries',
+        },
+        {
+          name: 'System',
+          description: 'Health check and system information',
+        },
+      ],
+      components: {
+        schemas: {
+          Error: {
+            type: 'object',
+            properties: {
+              error: {
+                type: 'string',
+                description: 'Error message',
+              },
+              job_id: {
+                type: 'string',
+                description: 'Job ID (if applicable)',
+              },
+            },
+          },
+          JobCreatedResponse: {
+            type: 'object',
+            properties: {
+              job_id: {
+                type: 'string',
+                description: 'Unique job identifier (UUID v4)',
+                format: 'uuid',
+              },
+              status: {
+                type: 'string',
+                enum: ['pending'],
+                description: 'Initial job status',
+              },
+              service: {
+                type: 'string',
+                description: 'Service name that was executed',
+              },
+              message: {
+                type: 'string',
+                description: 'Additional information about the job',
+              },
+              created_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Job creation timestamp',
+              },
+              links: {
+                type: 'object',
+                properties: {
+                  status: {
+                    type: 'string',
+                    description: 'Link to job status endpoint',
+                  },
+                  result: {
+                    type: 'string',
+                    description: 'Link to job result endpoint',
+                  },
+                },
+              },
+            },
+          },
+          ServiceInfo: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Service name',
+              },
+              description: {
+                type: 'string',
+                description: 'Service description',
+              },
+              parameters: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string' },
+                    description: { type: 'string' },
+                    required: { type: 'boolean' },
+                    default: { type: 'any' },
+                  },
+                },
+              },
+            },
+          },
+          ServiceDetails: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              parameters: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string' },
+                    description: { type: 'string' },
+                    required: { type: 'boolean' },
+                    default: { type: 'any' },
+                  },
+                },
+              },
+            },
+          },
+          JobSummary: {
+            type: 'object',
+            properties: {
+              job_id: { type: 'string', format: 'uuid' },
+              service: { type: 'string' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'running', 'completed', 'failed', 'timeout', 'cancelled'],
+              },
+              created_at: { type: 'string', format: 'date-time' },
+              started_at: { type: 'string', format: 'date-time' },
+              completed_at: { type: 'string', format: 'date-time' },
+              links: {
+                type: 'object',
+                properties: {
+                  self: { type: 'string' },
+                  result: { type: 'string' },
+                },
+              },
+            },
+          },
+          JobStatus: {
+            type: 'object',
+            properties: {
+              job_id: { type: 'string', format: 'uuid' },
+              service: { type: 'string' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'running', 'completed', 'failed', 'timeout', 'cancelled'],
+              },
+              created_at: { type: 'string', format: 'date-time' },
+              started_at: { type: 'string', format: 'date-time' },
+              completed_at: { type: 'string', format: 'date-time' },
+              progress: {
+                type: 'object',
+                properties: {
+                  current: { type: 'number', description: 'Current progress value' },
+                  maximum: { type: 'number', description: 'Maximum progress value' },
+                  node: { type: 'string', description: 'Currently executing node ID' },
+                  cached_nodes: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'List of cached node IDs',
+                  },
+                  timestamp: { type: 'string', format: 'date-time' },
+                },
+              },
+              parameters: {
+                type: 'object',
+                description: 'Original job parameters',
+              },
+              error: {
+                type: 'string',
+                description: 'Error message if job failed',
+              },
+              links: {
+                type: 'object',
+                properties: {
+                  self: { type: 'string' },
+                  result: { type: 'string' },
+                },
+              },
+            },
+          },
+          JobResult: {
+            type: 'object',
+            required: ['job_id', 'service', 'status', 'execution_time', 'images'],
+            properties: {
+              job_id: { type: 'string', format: 'uuid' },
+              service: { type: 'string' },
+              status: { type: 'string', enum: ['completed'] },
+              execution_time: { type: 'string', description: 'Execution time in milliseconds' },
+              total_images: { type: 'number' },
+              prompt_id: { type: 'string' },
+              node: { type: 'string' },
+              display_node: { type: 'string' },
+              node_history: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    node: { type: 'string' },
+                    type: { type: 'string' },
+                    executed_at: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+              parameters: { type: 'object' },
+              images: {
+                type: 'array',
+                items: {
+                  $ref: '#/components/schemas/Image',
+                },
+              },
+            },
+          },
+          Image: {
+            type: 'object',
+            properties: {
+              filename: { type: 'string', description: 'Image filename' },
+              subfolder: { type: 'string', description: 'Subfolder path' },
+              type: { type: 'string', description: 'Image type (usually "output")' },
+              url: {
+                type: 'string',
+                description: 'ComfyUI direct URL',
+                format: 'uri',
+              },
+              s3_url: {
+                type: 'string',
+                description: 'S3 URL (if S3 upload is enabled)',
+                format: 'uri',
+              },
+            },
+          },
+        },
+      },
+      paths: allPaths,
+    },
+    apis: ['./src/**/*.ts'], // Files containing annotations
+  }
+
+  return swaggerJSDoc(options)
+}

@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+test
+tests
+*.test.ts
+*.spec.ts
+
+# Documentation
+README.md
+CLAUDE.md
+*.md
+
+# Config (runtime generated)
+config.json
+
+# Logs
+logs
+*.log
+
+# Temporary files
+tmp
+temp

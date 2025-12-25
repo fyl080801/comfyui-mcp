@@ -1,0 +1,54 @@
+{
+  "$schema": "./config.schema.json",
+  "comfyui": {
+    "address": "http://127.0.0.1:8188",
+    "client_id": "comfyui-mcp-client"
+  },
+  "s3": {
+    "bucket": "your-s3-bucket-name",
+    "region": "us-east-1",
+    "endpoint": "",
+    "public_domain": "",
+    "enable_path_style": false
+  },
+  "jobs": {
+    "max_job_age": 86400000,
+    "max_jobs": 1000,
+    "cleanup_interval": 3600000
+  },
+  "services": [
+    {
+      "name": "text_to_image",
+      "description": "Generate images from text prompts using ComfyUI",
+      "route": "/mcp/text_to_image",
+      "comfyui_workflow_api": "workflow_api.json",
+      "parameters": [
+        {
+          "name": "prompt",
+          "type": "string",
+          "description": "The text prompt for image generation",
+          "required": true,
+          "comfyui_node_id": "6",
+          "comfyui_widget_name": "text"
+        },
+        {
+          "name": "negative_prompt",
+          "type": "string",
+          "description": "Negative prompt for things to avoid in the image",
+          "required": false,
+          "comfyui_node_id": "7",
+          "comfyui_widget_name": "text"
+        },
+        {
+          "name": "seed",
+          "type": "number",
+          "description": "Random seed for generation (use -1 for random)",
+          "required": false,
+          "default": -1,
+          "comfyui_node_id": "3",
+          "comfyui_widget_name": "seed"
+        }
+      ]
+    }
+  ]
+}

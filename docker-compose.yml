@@ -1,0 +1,72 @@
+# Docker Compose for ComfyUI-MCP Server
+# Usage:
+#   Development: docker-compose up
+#   Production: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+
+version: '3.8'
+
+services:
+  comfyui-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: comfyui-mcp-server
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+    environment:
+      # ComfyUI Configuration
+      - COMFYUI_ADDRESS=http://comfyui:8188
+
+      # S3 Configuration (optional)
+      # - S3_ENABLE=true
+      # - AWS_ACCESS_KEY_ID=your-access-key
+      # - AWS_SECRET_ACCESS_KEY=your-secret-key
+      # - S3_BUCKET=your-bucket-name
+      # - S3_REGION=us-east-1
+      # - S3_ENDPOINT=
+      # - S3_PUBLIC_DOMAIN=
+
+      # Job Configuration
+      - JOB_MAX_JOB_AGE=86400000
+      - JOB_MAX_JOBS=1000
+      - JOB_CLEANUP_INTERVAL=3600000
+
+      # Node Environment
+      - NODE_ENV=production
+      - EXPRESS_PORT=3000
+    volumes:
+      # Mount config directory for easy configuration updates
+      - ./config.example.json:/app/config.json:ro
+      # Mount workflow files
+      - ./workflow_api.json:/app/workflow_api.json:ro
+    networks:
+      - comfyui-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/mcp', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: ComfyUI service (if you want to run ComfyUI in Docker too)
+  # comfyui:
+  #   image: comfyui/comfyui:latest
+  #   container_name: comfyui
+  #   ports:
+  #     - "8188:8188"
+  #   volumes:
+  #     - comfyui-models:/app/models
+  #     - comfyui-output:/app/output
+  #   networks:
+  #     - comfyui-network
+  #   restart: unless-stopped
+
+networks:
+  comfyui-network:
+    driver: bridge
+
+# volumes:
+#   comfyui-models:
+#   comfyui-output:

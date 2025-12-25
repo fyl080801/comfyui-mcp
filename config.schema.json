@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ComfyUI MCP Server Configuration",
+  "description": "Configuration schema for ComfyUI MCP server",
+  "type": "object",
+  "required": ["comfyui", "services"],
+  "properties": {
+    "comfyui": {
+      "type": "object",
+      "description": "ComfyUI server connection settings",
+      "required": ["address"],
+      "properties": {
+        "address": {
+          "type": "string",
+          "format": "uri",
+          "description": "ComfyUI server address",
+          "default": "http://127.0.0.1:8188"
+        },
+        "client_id": {
+          "type": "string",
+          "description": "Client identifier for ComfyUI connection",
+          "default": "comfyui-mcp-client"
+        }
+      }
+    },
+    "s3": {
+      "type": "object",
+      "description": "AWS S3 configuration for image storage",
+      "properties": {
+        "bucket": {
+          "type": "string",
+          "description": "S3 bucket name"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region",
+          "default": "us-east-1"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Custom S3 endpoint (for S3-compatible services)"
+        },
+        "public_domain": {
+          "type": "string",
+          "description": "Custom public domain for S3 URLs"
+        },
+        "enable_path_style": {
+          "type": "boolean",
+          "description": "Enable path-style addressing",
+          "default": false
+        }
+      }
+    },
+    "services": {
+      "type": "array",
+      "description": "ComfyUI workflow services",
+      "items": {
+        "type": "object",
+        "required": ["name", "comfyui_workflow_api", "parameters"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Service name (used as tool name)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Service description"
+          },
+          "route": {
+            "type": "string",
+            "description": "Optional route path"
+          },
+          "comfyui_workflow_api": {
+            "type": "string",
+            "description": "Path to workflow JSON file"
+          },
+          "parameters": {
+            "type": "array",
+            "description": "Service parameters",
+            "items": {
+              "type": "object",
+              "required": ["name", "comfyui_node_id", "comfyui_widget_name"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Parameter name"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["string", "number", "boolean", "array", "object"],
+                  "description": "Parameter type",
+                  "default": "string"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Parameter description"
+                },
+                "required": {
+                  "type": "boolean",
+                  "description": "Whether parameter is required",
+                  "default": false
+                },
+                "default": {
+                  "description": "Default value"
+                },
+                "comfyui_node_id": {
+                  "type": "string",
+                  "description": "ComfyUI node ID in workflow"
+                },
+                "comfyui_widget_name": {
+                  "type": "string",
+                  "description": "Widget name within the node"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
