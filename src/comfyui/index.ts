@@ -145,25 +145,224 @@ const convertParameterType = (param: ServiceParameter): z.ZodTypeAny => {
 // Workflow Helpers
 // ============================================================================
 
-function findSaveImageNode(workflow: any): string {
+/**
+ * Validate that output nodes in config actually produce outputs in ComfyUI
+ * This prevents misconfigurations like using StringConstantMultiline as output node
+ */
+function validateOutputNodes(service: ServiceConfig, workflow: any): void {
+  if (!service.outputs || service.outputs.length === 0) {
+    return
+  }
+
+  const validOutputNodeTypes = [
+    'SaveImage',
+    'SaveImageWebsocket',
+    'SaveImageS3',
+    'SaveVideo',
+    'SaveAudio',
+    'SaveMesh',
+    'PreviewImage',
+    'VHS_SaveVideo',
+    'VHS_SaveVideoUpload',
+  ]
+
+  const warnings: string[] = []
+
+  for (const output of service.outputs) {
+    const nodeId = output.source.nodeId
+    const node = workflow[nodeId]
+
+    if (!node) {
+      warnings.push(`Output node '${nodeId}' not found in workflow`)
+      continue
+    }
+
+    const classType = node.class_type
+
+    // Check if the node type is a valid output node
+    const isValidOutputNode = validOutputNodeTypes.some((validType) =>
+      classType === validType || classType.startsWith('Save')
+    )
+
+    if (!isValidOutputNode) {
+      warnings.push(
+        `Output node '${nodeId}' has type '${classType}', which may not trigger executed events. ` +
+          `Valid output node types: ${validOutputNodeTypes.join(', ')}. ` +
+          `This could cause the job to hang in 'running' state.`
+      )
+    }
+  }
+
+  if (warnings.length > 0) {
+    logger.warn(`Service '${service.name}' output node validation warnings:\n  - ${warnings.join('\n  - ')}`)
+  }
+}
+
+/**
+ * Find the end node for workflow execution
+ * Priority:
+ * 1. Last output node defined in service config.outputs
+ * 2. SaveImage node
+ * 3. Any Save* node (SaveImageS3, etc.)
+ * 4. Last node in workflow
+ */
+function findEndNode(workflow: any, service?: ServiceConfig): string {
+  // Priority 1: Use the last output node defined in service config
+  if (service?.outputs && service.outputs.length > 0) {
+    const lastOutput = service.outputs[service.outputs.length - 1]
+    if (lastOutput && lastOutput.source && lastOutput.source.nodeId) {
+      const outputNodeId = lastOutput.source.nodeId
+      if (workflow[outputNodeId]) {
+        logger.info(`Using end node from service config.outputs: ${outputNodeId}`)
+        return outputNodeId
+      }
+    }
+  }
+
+  // Priority 2: Find SaveImage node
   for (const [nodeId, node] of Object.entries(workflow)) {
     if ((node as any).class_type === 'SaveImage') {
+      logger.info(`Using SaveImage node as end node: ${nodeId}`)
       return nodeId
     }
   }
 
+  // Priority 3: Find any Save* node
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    const classType = (node as any).class_type
+    if (classType && classType.startsWith('Save')) {
+      logger.info(`Using ${classType} node as end node: ${nodeId}`)
+      return nodeId
+    }
+  }
+
+  // Priority 4: Fallback to last node
   const nodeIds = Object.keys(workflow)
   const lastNodeId = nodeIds[nodeIds.length - 1]
   if (!lastNodeId) {
     throw new Error('No nodes found in workflow')
   }
+  logger.warn(`Using last node as end node (fallback): ${lastNodeId}`)
   return lastNodeId
 }
 
 // ============================================================================
-// Image Processing
+// Output Processing
 // ============================================================================
 
+/**
+ * Build structured outputs from service config and ComfyUI execution result
+ */
+async function buildStructuredOutputs(
+  service: ServiceConfig,
+  executedResult: any,
+  comfyuiConfig: any,
+  s3Config: any
+): Promise<Array<any>> {
+  if (!service.outputs || service.outputs.length === 0) {
+    return []
+  }
+
+  const outputs: any[] = []
+
+  for (const outputConfig of service.outputs) {
+    const { name, type, description, source } = outputConfig
+    const { nodeId, outputType, index = 0 } = source
+
+    // Find the node output from executed result
+    const nodeOutput = executedResult.output
+
+    let output: any = {
+      name,
+      type,
+      description,
+      sourceNodeId: nodeId,
+    }
+
+    switch (type) {
+      case 'image':
+        // Handle image outputs from SaveImage/SaveImageS3 nodes
+        if (nodeOutput.images && nodeOutput.images.length > 0) {
+          const imageData = nodeOutput.images[index]
+          const imageUrl = `${comfyuiConfig.httpProtocol}://${comfyuiConfig.host}/view?filename=${encodeURIComponent(imageData.filename)}&subfolder=${encodeURIComponent(imageData.subfolder || '')}&type=${encodeURIComponent(imageData.type || 'output')}`
+
+          output.filename = imageData.filename
+          output.subfolder = imageData.subfolder || ''
+          output.url = imageUrl
+
+          // Upload to S3 if enabled
+          if (s3Config.enabled) {
+            try {
+              const response = await axios.get(imageUrl, {
+                responseType: 'arraybuffer',
+                timeout: 300000,
+              })
+              const s3Url = await uploadToS3(imageData.filename, Buffer.from(response.data))
+              output.s3Url = s3Url
+            } catch (error) {
+              console.error(`Failed to upload ${imageData.filename} to S3:`, error)
+            }
+          }
+        }
+        break
+
+      case 'text':
+        // Handle text outputs from text/string nodes
+        if (nodeOutput.text && nodeOutput.text.length > 0) {
+          output.content = nodeOutput.text[index]
+        } else if (executedResult.output?.string !== undefined) {
+          output.content = executedResult.output.string
+        }
+        break
+
+      case 'json':
+        // Handle JSON outputs
+        if (nodeOutput.json && nodeOutput.json.length > 0) {
+          output.content = nodeOutput.json[index]
+        }
+        break
+
+      case 'video':
+        // Handle video outputs (if ComfyUI supports them)
+        if (nodeOutput.video && nodeOutput.video.length > 0) {
+          const videoData = nodeOutput.video[index]
+          output.filename = videoData.filename
+          output.subfolder = videoData.subfolder || ''
+          output.url = `${comfyuiConfig.httpProtocol}://${comfyuiConfig.host}/view?filename=${encodeURIComponent(videoData.filename)}&subfolder=${encodeURIComponent(videoData.subfolder || '')}&type=${videoData.type || 'output'}`
+        }
+        break
+
+      case 'audio':
+        // Handle audio outputs
+        if (nodeOutput.audio && nodeOutput.audio.length > 0) {
+          const audioData = nodeOutput.audio[index]
+          output.filename = audioData.filename
+          output.subfolder = audioData.subfolder || ''
+          output.url = `${comfyuiConfig.httpProtocol}://${comfyuiConfig.host}/view?filename=${encodeURIComponent(audioData.filename)}&subfolder=${encodeURIComponent(audioData.subfolder || '')}&type=${audioData.type || 'output'}`
+        }
+        break
+
+      case '3d_model':
+        // Handle 3D model outputs (mesh files)
+        if (nodeOutput.mesh && nodeOutput.mesh.length > 0) {
+          const meshData = nodeOutput.mesh[index]
+          output.filename = meshData.filename
+          output.subfolder = meshData.subfolder || ''
+          output.url = `${comfyuiConfig.httpProtocol}://${comfyuiConfig.host}/view?filename=${encodeURIComponent(meshData.filename)}&subfolder=${encodeURIComponent(meshData.subfolder || '')}&type=${meshData.type || 'output'}`
+        }
+        break
+    }
+
+    outputs.push(output)
+  }
+
+  return outputs
+}
+
+/**
+ * Process all output images from ComfyUI
+ * This is kept for backward compatibility
+ */
 async function processOutputImages(
   images: Array<{ filename: string; subfolder: string; type: string }>,
   comfyuiConfig: any,
@@ -282,8 +481,12 @@ export async function executeJobAsync(
     // Clean workflow to remove metadata fields
     const cleanedWorkflow = cleanWorkflow(workflow)
 
-    // Find end node
-    const endNode = findSaveImageNode(cleanedWorkflow)
+    // Validate output nodes before execution
+    validateOutputNodes(service, cleanedWorkflow)
+
+    // Find end node using the new priority-based logic
+    const endNode = findEndNode(cleanedWorkflow, service)
+    logger.info(`Job ${jobId}: End node set to '${endNode}'`)
 
     // Execute with job tracking
     const result = await ws.executeWithJobTracking({
@@ -291,10 +494,14 @@ export async function executeJobAsync(
       end: endNode,
     })
 
-    // Process ALL output images
+    // Build structured outputs from service config
+    const structuredOutputs = await buildStructuredOutputs(service, result, config.comfyui, config.s3)
+
+    // Process ALL output images (for backward compatibility)
     const images = await processOutputImages(result.output.images, config.comfyui, config.s3)
 
-    // Update result with images and timing
+    // Update result with outputs, images and timing
+    result.outputs = structuredOutputs
     result.images = images
     result.executionTime = Date.now() - job.startedAt!.getTime()
 
@@ -326,6 +533,24 @@ export async function executeJobAsync(
 export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
   const config = getConfig()
   const tools = config.services
+
+  // Validate all service configurations at startup
+  logger.info('Validating service configurations...')
+  let validationWarnings = 0
+  tools.forEach((service: ServiceConfig) => {
+    try {
+      const workflow = loadWorkflow(service.comfyuiWorkflowApi)
+      validateOutputNodes(service, workflow)
+    } catch (error) {
+      logger.error(`Failed to validate service '${service.name}': ${(error as Error).message}`)
+      validationWarnings++
+    }
+  })
+  if (validationWarnings > 0) {
+    logger.warn(`Service validation completed with ${validationWarnings} warning(s)`)
+  } else {
+    logger.info('All service configurations validated successfully')
+  }
 
   // Register service tools (async execution)
   tools.forEach((service: ServiceConfig) => {

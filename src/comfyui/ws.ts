@@ -169,8 +169,11 @@ export class ComfyuiWebsocket {
             this.events.dispatchEvent(new ComfyuiEvent(eventData.type, { data: eventData }))
           },
           executed: () => {
+            const currentNode = eventData.data?.node
+            const endNode = params.end
+
             // 对于某些工作流，存在多个执行结束的节点，这时候需要指定一个结束节点用来判断
-            if (params.end && eventData.data?.node !== params.end) {
+            if (endNode && currentNode !== endNode) {
               this.events.dispatchEvent(new ComfyuiEvent(eventData.type, { data: eventData }))
               return
             }
