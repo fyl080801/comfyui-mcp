@@ -1,0 +1,392 @@
+metadata:
+  name: comfyui-mcp-build
+  namespace: dev
+  uid: 923eaeea-e664-4671-b78b-34e6a2bb039f
+  resourceVersion: '145675765'
+  generation: 1
+  creationTimestamp: '2025-12-25T13:41:44Z'
+  labels:
+    workflows.argoproj.io/creator: ae2f33f4-c8e4-46e3-96a4-c999934586f6
+    workflows.argoproj.io/creator-email: admin.at.fyl080801.uk
+    workflows.argoproj.io/creator-preferred-username: admin
+  annotations:
+    description: ComfyUI-MCP 构建工作流 - 克隆代码、集群内构建、上传 Harbor
+  managedFields:
+    - manager: argo
+      operation: Update
+      apiVersion: argoproj.io/v1alpha1
+      time: '2025-12-25T13:41:44Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:metadata:
+          f:annotations:
+            '.': {}
+            f:description: {}
+          f:labels:
+            '.': {}
+            f:workflows.argoproj.io/creator: {}
+            f:workflows.argoproj.io/creator-email: {}
+            f:workflows.argoproj.io/creator-preferred-username: {}
+        f:spec: {}
+spec:
+  templates:
+    - name: main
+      inputs: {}
+      outputs: {}
+      metadata: {}
+      steps:
+        - - name: clone
+            template: git-clone
+            arguments:
+              parameters:
+                - name: gitRepo
+                  value: '{{workflow.parameters.gitRepo}}'
+                - name: gitRevision
+                  value: '{{workflow.parameters.commit}}'
+                - name: defaultRevision
+                  value: '{{workflow.parameters.gitRevision}}'
+        - - name: set-tags
+            template: set-image-tags
+            arguments:
+              parameters:
+                - name: version
+                  value: '{{workflow.parameters.version}}'
+                - name: commit
+                  value: '{{steps.clone.outputs.parameters.commit}}'
+        - - name: build-and-push
+            template: buildah-build-push
+            arguments:
+              parameters:
+                - name: imageName
+                  value: '{{workflow.parameters.imageName}}'
+                - name: imageTag
+                  value: '{{steps.set-tags.outputs.parameters.imageTag}}'
+                - name: imageTagLatest
+                  value: '{{steps.set-tags.outputs.parameters.imageTagLatest}}'
+                - name: harborAuthSecret
+                  value: '{{workflow.parameters.harborAuthSecret}}'
+                - name: dockerfileConfigMap
+                  value: '{{workflow.parameters.dockerfileConfigMap}}'
+              artifacts:
+                - name: source
+                  from: '{{steps.clone.outputs.artifacts.source}}'
+        - - name: notify-success
+            template: notify
+            arguments:
+              parameters:
+                - name: status
+                  value: success
+                - name: message
+                  value: "✅ 构建成功:
+                    {{workflow.parameters.imageName}}:{{steps.set-tags.outputs.param\
+                    eters.imageTag}}"
+            when: '{{steps.build-and-push.status}} == Succeeded'
+        - - name: notify-failure
+            template: notify
+            arguments:
+              parameters:
+                - name: status
+                  value: failure
+                - name: message
+                  value: '❌ 构建失败: {{workflow.parameters.imageName}}'
+            when: '{{steps.build-and-push.status}} != Succeeded'
+    - name: git-clone
+      inputs:
+        parameters:
+          - name: gitRepo
+          - name: gitRevision
+          - name: defaultRevision
+      outputs:
+        parameters:
+          - name: commit
+            valueFrom:
+              path: /workspace/commit-sha.txt
+        artifacts:
+          - name: source
+            path: /workspace
+      metadata:
+        annotations:
+          description: 克隆 Git 仓库并切换到指定版本
+      script:
+        name: ''
+        image: 192.168.68.95:31443/docker.io/alpine/git:latest
+        command:
+          - /bin/sh
+          - -c
+        envFrom:
+          - configMapRef:
+              name: '{{workflow.parameters.proxyConfigMap}}'
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        source: |
+          set -e
+
+          REPO="{{inputs.parameters.gitRepo}}"
+          REVISION="{{inputs.parameters.gitRevision}}"
+          DEFAULT_REVISION="{{inputs.parameters.defaultRevision}}"
+
+          # 如果没有指定 commit，使用默认分支
+          if [ -z "$REVISION" ] || [ "$REVISION" = "" ]; then
+            REVISION="$DEFAULT_REVISION"
+          fi
+
+          echo "🔎 Cloning $REPO ..."
+          git clone $REPO /workspace
+
+          cd /workspace
+
+          echo "📌 Fetching all branches and tags..."
+          git fetch --tags --all
+
+          echo "📌 Checking out $REVISION ..."
+          git checkout $REVISION
+
+          echo "✅ Successfully checked out to $REVISION"
+          echo ""
+          echo "📋 Current commit:"
+          git log -1 --oneline
+          echo ""
+
+          # 输出 commit SHA 供后续步骤使用
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo $COMMIT_SHA > /workspace/commit-sha.txt
+          echo "🔖 Commit SHA: $COMMIT_SHA"
+    - name: set-image-tags
+      inputs:
+        parameters:
+          - name: version
+          - name: commit
+      outputs:
+        parameters:
+          - name: imageTag
+            valueFrom:
+              path: /tmp/image-tag.txt
+          - name: imageTagLatest
+            valueFrom:
+              path: /tmp/image-tag-latest.txt
+      metadata: {}
+      script:
+        name: ''
+        image: alpine:3.18
+        command:
+          - /bin/sh
+          - -c
+        resources: {}
+        source: |
+          VERSION="{{inputs.parameters.version}}"
+          COMMIT="{{inputs.parameters.commit}}"
+
+          echo "🏷️  Version: $VERSION"
+          echo "🔖 Commit: $COMMIT"
+
+          if [ -z "$COMMIT" ] || [ "$COMMIT" = "" ]; then
+            TAG="$VERSION"
+            TAG_LATEST="$VERSION"
+          else
+            SHORT_COMMIT=${COMMIT:0:7}
+            TAG="${VERSION}-${SHORT_COMMIT}"
+            TAG_LATEST="$VERSION"
+          fi
+
+          echo "📦 Image Tag: $TAG"
+          echo "📦 Latest Tag: $TAG_LATEST"
+
+          # 输出到文件供后续步骤使用
+          echo "$TAG" > /tmp/image-tag.txt
+          echo "$TAG_LATEST" > /tmp/image-tag-latest.txt
+    - name: buildah-build-push
+      inputs:
+        parameters:
+          - name: imageName
+          - name: imageTag
+          - name: imageTagLatest
+          - name: harborAuthSecret
+          - name: dockerfileConfigMap
+        artifacts:
+          - name: source
+            path: /workspace
+      outputs: {}
+      metadata:
+        annotations:
+          description: 使用 Buildah 在集群内构建镜像并推送到 Harbor
+      container:
+        name: ''
+        image: quay.io/buildah/stable:latest
+        command:
+          - /bin/sh
+          - -c
+        args:
+          - |
+            set -e
+
+            IMAGE_NAME="{{inputs.parameters.imageName}}"
+            IMAGE_TAG="{{inputs.parameters.imageTag}}"
+            IMAGE_TAG_LATEST="{{inputs.parameters.imageTagLatest}}"
+            DOCKERFILE_CM="{{inputs.parameters.dockerfileConfigMap}}"
+
+            echo "🔧 Verifying buildah installation..."
+            buildah version
+            echo ""
+
+            echo "📂 Working directory: $(pwd)"
+
+            # 判断使用哪个 Dockerfile
+            if [ -n "$DOCKERFILE_CM" ] && [ "$DOCKERFILE_CM" != "" ]; then
+              echo "📄 Using Dockerfile from ConfigMap: $DOCKERFILE_CM"
+              DOCKERFILE_PATH="/workspace/Dockerfile.custom"
+            else
+              echo "📄 Using Dockerfile from source code"
+              DOCKERFILE_PATH="/workspace/Dockerfile"
+            fi
+
+            echo "📄 Dockerfile location: $DOCKERFILE_PATH"
+            echo ""
+
+            echo "🚧 Building image: ${IMAGE_NAME}:${IMAGE_TAG}"
+            buildah bud \
+              --format docker \
+              --file $DOCKERFILE_PATH \
+              --tag ${IMAGE_NAME}:${IMAGE_TAG} \
+              --tag ${IMAGE_NAME}:${IMAGE_TAG_LATEST} \
+              /workspace
+
+            echo "✅ Build completed"
+            echo ""
+
+            echo "🚀 Pushing images to Harbor..."
+            echo "   - ${IMAGE_NAME}:${IMAGE_TAG}"
+            buildah push \
+              --tls-verify=false \
+              --creds $USER:$PASS \
+              ${IMAGE_NAME}:${IMAGE_TAG} \
+              docker://${IMAGE_NAME}:${IMAGE_TAG}
+
+            echo "   - ${IMAGE_NAME}:${IMAGE_TAG_LATEST}"
+            buildah push \
+              --tls-verify=false \
+              --creds $USER:$PASS \
+              ${IMAGE_NAME}:${IMAGE_TAG_LATEST} \
+              docker://${IMAGE_NAME}:${IMAGE_TAG_LATEST}
+
+            echo ""
+            echo "✅ Build & push completed successfully!"
+            echo ""
+            echo "📦 Images pushed:"
+            echo "   - ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "   - ${IMAGE_NAME}:${IMAGE_TAG_LATEST}"
+        workingDir: /workspace
+        envFrom:
+          - configMapRef:
+              name: '{{workflow.parameters.proxyConfigMap}}'
+        env:
+          - name: USER
+            valueFrom:
+              secretKeyRef:
+                name: '{{inputs.parameters.harborAuthSecret}}'
+                key: username
+          - name: PASS
+            valueFrom:
+              secretKeyRef:
+                name: '{{inputs.parameters.harborAuthSecret}}'
+                key: password
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+          - name: dockerfile-volume
+            readOnly: true
+            mountPath: /workspace/Dockerfile.custom
+            subPath: Dockerfile
+          - name: dockerfile-volume
+            readOnly: true
+            mountPath: /workspace/.dockerignore
+            subPath: .dockerignore
+          - name: harbor-ca
+            readOnly: true
+            mountPath: /etc/pki/tls/certs/ca-trust-source/anchors/harbor.crt
+            subPath: ca.crt
+        securityContext:
+          privileged: true
+          runAsUser: 0
+      volumes:
+        - name: dockerfile-volume
+          configMap:
+            name: '{{inputs.parameters.dockerfileConfigMap}}'
+            optional: true
+    - name: notify
+      inputs:
+        parameters:
+          - name: status
+          - name: message
+      outputs: {}
+      metadata: {}
+      script:
+        name: ''
+        image: alpine:3.18
+        command:
+          - /bin/sh
+          - -c
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 32Mi
+        source: |
+          STATUS="{{inputs.parameters.status}}"
+          MESSAGE="{{inputs.parameters.message}}"
+          WORKFLOW="{{workflow.name}}"
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          echo "======================================"
+          echo "Workflow: $WORKFLOW"
+          echo "Status: $STATUS"
+          echo "Time: $TIMESTAMP"
+          echo "Message: $MESSAGE"
+          echo "======================================"
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: generateName
+        default: comfyui-mcp-build-
+        description: Workflow 实例的 generateName 前缀
+      - name: gitRepo
+        default: https://github.com/fyl080801/comfyui-mcp.git
+        description: 要克隆的 Git 仓库地址
+      - name: gitRevision
+        default: master
+        description: Git 分支、tag 或 commit SHA（默认 master）
+      - name: version
+        default: 1.0.0
+        description: 镜像版本号（语义化版本）
+      - name: commit
+        default: ''
+        description: 指定 commit SHA（优先级高于 gitRevision）
+      - name: imageName
+        default: harbor-core.harbor.svc/ai-apps/comfyui-mcp
+        description: 构建后镜像的完整名称（含 registry/项目）
+      - name: imageTag
+        default: ''
+        description: 镜像 tag（默认为 version-commit 格式）
+      - name: dockerfileConfigMap
+        default: ''
+        description: 自定义 Dockerfile 的 ConfigMap 名称（为空则使用源码中的 Dockerfile）
+      - name: harborAuthSecret
+        default: harbor-auth
+        description: Harbor 认证信息 secret 名称
+      - name: harborCaSecret
+        default: harbor-ca-cert
+        description: Harbor CA 证书 secret 名称（自签名证书需要）
+      - name: proxyConfigMap
+        default: workflow-proxy-config
+        description: 代理配置 ConfigMap 名称（可选）
