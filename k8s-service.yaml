@@ -50,9 +50,9 @@ spec:
         app: comfyui-mcp
         version: v1
       annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+        prometheus.io/path: '/metrics'
     spec:
       # Use non-root user for security
       securityContext:
@@ -73,23 +73,32 @@ spec:
           env:
             # ComfyUI Configuration
             - name: COMFYUI_ADDRESS
-              value: "http://comfyui:8188"
+              value: 'http://comfyui:8188'
             - name: COMFYUI_CLIENT_ID
-              value: "comfyui-mcp-client"
+              value: 'comfyui-mcp-client'
+
+            # Server Configuration
+            # ⭐ IMPORTANT: Set SERVER_DOMAIN to your external Ingress domain
+            # This ensures Swagger UI makes requests to the correct URL
+            # Example: If your Ingress host is "comfyui-mcp.example.com",
+            #          set SERVER_DOMAIN to "comfyui-mcp.example.com"
+            #          or "https://comfyui-mcp.example.com" for HTTPS
+            - name: SERVER_DOMAIN
+              value: 'comfyui-mcp.example.com'  # ⬅️ CHANGE THIS to your actual domain!
 
             # Node Environment
             - name: NODE_ENV
-              value: "production"
+              value: 'production'
             - name: EXPRESS_PORT
-              value: "3000"
+              value: '3000'
 
             # Job Configuration (optional - override config.json)
             - name: JOB_MAX_JOB_AGE
-              value: "86400000"
+              value: '86400000'
             - name: JOB_MAX_JOBS
-              value: "1000"
+              value: '1000'
             - name: JOB_CLEANUP_INTERVAL
-              value: "3600000"
+              value: '3600000'
 
             # S3 Configuration (optional - use from secret in production)
             # - name: S3_ENABLE
@@ -143,11 +152,11 @@ spec:
 
           resources:
             limits:
-              cpu: "1000m"
-              memory: "1Gi"
+              cpu: '1000m'
+              memory: '1Gi'
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: '100m'
+              memory: '128Mi'
 
       volumes:
         - name: config

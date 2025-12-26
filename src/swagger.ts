@@ -19,8 +19,38 @@ export function createSwaggerSpec(services: ServiceConfig[]) {
   // Detect if domain already includes protocol (http:// or https://)
   const hasProtocol = /^https?:\/\//i.test(serverDomain)
   const protocol = hasProtocol ? '' : 'http://'
-  const serverUrl = `${protocol}${serverDomain}:${expressPort}`
-  const mcpUrl = `${protocol}${serverDomain}:8080`
+
+  // Build server URL for Swagger
+  // Strategy:
+  // 1. If domain already has port (e.g., "localhost:3000"), use as-is
+  // 2. If production with external domain, omit port (for Ingress/LB access)
+  // 3. Otherwise, add default port for local development
+  const domainWithoutProtocol = serverDomain.replace(/^https?:\/\//i, '')
+  const hasPortInDomain = /:\d+$/.test(domainWithoutProtocol)
+
+  // Check if this looks like a production domain (no .local, not localhost/IP)
+  const isLocalhost = serverDomain === 'localhost' ||
+                      serverDomain === '127.0.0.1' ||
+                      serverDomain.includes('.local')
+
+  // For production accessed through Ingress, don't add port
+  const isProductionAccess = process.env.NODE_ENV === 'production' &&
+                             !isLocalhost &&
+                             !hasPortInDomain &&
+                             process.env.SERVER_PORT_IN_URL !== 'true'
+
+  const serverUrl = hasPortInDomain
+    ? `${protocol}${serverDomain}` // Already has port
+    : isProductionAccess
+      ? `${protocol}${serverDomain}` // Production: no port
+      : `${protocol}${serverDomain}:${expressPort}` // Local: add port
+
+  // MCP endpoint URL
+  const mcpUrl = hasPortInDomain
+    ? `${protocol}${serverDomain.replace(/:\d+$/, ':8080')}` // Replace port
+    : isProductionAccess
+      ? `${protocol}${serverDomain}/mcp` // Production: use /mcp path
+      : `${protocol}${serverDomain}:8080` // Local: add 8080 port
 
   const servicePaths: Record<string, any> = {}
 

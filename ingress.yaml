@@ -38,14 +38,14 @@ spec:
                 name: comfyui-mcp
                 port:
                   number: 8080
-          # Root path - maps / to port 8080 (or change to 3000 for Express)
+          # Root path - maps / to port 3000 (Express server with Swagger UI and RESTful API)
           - path: /()(.*)
             pathType: Prefix
             backend:
               service:
                 name: comfyui-mcp
                 port:
-                  number: 8080
+                  number: 3000
   # TLS configuration (optional - uncomment and configure for HTTPS)
   # tls:
   #   - hosts:

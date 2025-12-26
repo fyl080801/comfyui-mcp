@@ -392,6 +392,103 @@ Access:
 - Swagger UI: `http://localhost:3000/api-docs`
 - MCP Protocol: `http://localhost:8080/mcp`
 
+## Kubernetes Deployment
+
+### Prerequisites
+
+- Kubernetes cluster with NGINX Ingress Controller
+- `kubectl` configured to access your cluster
+- Docker image pushed to a registry
+
+### Deployment Steps
+
+1. **Update Configuration Files**:
+
+   Edit `k8s-service.yaml` and update the following:
+   ```yaml
+   # ⬇️ CHANGE THIS to your actual Ingress domain!
+   - name: SERVER_DOMAIN
+     value: 'comfyui-mcp.example.com'
+   ```
+
+   Edit `ingress.yaml` and update the host:
+   ```yaml
+   - host: comfyui-mcp.example.com  # ⬅️ CHANGE to your domain!
+   ```
+
+2. **Create ConfigMap with your configuration**:
+   ```bash
+   # Create a ConfigMap from your config.json
+   kubectl create configmap comfyui-mcp-config \
+     --from-file=config.json=config.json \
+     --namespace=dev
+   ```
+
+3. **Apply Kubernetes manifests**:
+   ```bash
+   # Apply Service, Deployment, HPA, and PDB
+   kubectl apply -f k8s-service.yaml
+
+   # Apply Ingress
+   kubectl apply -f ingress.yaml
+   ```
+
+4. **Verify deployment**:
+   ```bash
+   # Check pods
+   kubectl get pods -n dev -l app=comfyui-mcp
+
+   # Check services
+   kubectl get svc -n dev comfyui-mcp
+
+   # Check ingress
+   kubectl get ingress -n dev
+
+   # View logs
+   kubectl logs -f -n dev -l app=comfyui-mcp
+   ```
+
+### Important: SERVER_DOMAIN Configuration
+
+The `SERVER_DOMAIN` environment variable is **critical** for Kubernetes deployments with Ingress:
+
+- **What it does**: Tells Swagger UI what base URL to use when making API requests
+- **Why it matters**: Without it, Swagger UI will try to call `localhost:3000` from your browser, which won't work
+- **How to set it**:
+  - For HTTP: `SERVER_DOMAIN=api.example.com`
+  - For HTTPS: `SERVER_DOMAIN=https://api.example.com`
+  - The code automatically detects production mode and omits the port number
+
+**Example Scenarios**:
+
+| Scenario | SERVER_DOMAIN Value | Resulting Swagger URL |
+|----------|---------------------|----------------------|
+| Local development | `localhost` | `http://localhost:3000` |
+| Production with Ingress | `api.example.com` | `http://api.example.com` (no port) |
+| Production with HTTPS | `https://api.example.com` | `https://api.example.com` |
+| Custom port | `localhost:3000` | `http://localhost:3000` |
+
+### Troubleshooting
+
+**Problem**: Swagger UI shows "Connection refused" when trying to execute requests
+
+**Solution**: Check that `SERVER_DOMAIN` is set correctly in your Deployment:
+```bash
+# Check current value
+kubectl get deployment comfyui-mcp -n dev -o yaml | grep SERVER_DOMAIN
+
+# If incorrect, edit the deployment
+kubectl edit deployment comfyui-mcp -n dev
+```
+
+**Problem**: Ingress returns 502/503 errors
+
+**Solution**: Verify the Ingress is routing to the correct port (3000, not 8080):
+```bash
+# Check Ingress configuration
+kubectl describe ingress comfyui-mcp-ingress -n dev
+```
+
 ## Development Commands
 
 ```bash
