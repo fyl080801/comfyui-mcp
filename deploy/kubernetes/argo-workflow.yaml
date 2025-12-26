@@ -166,7 +166,7 @@ spec:
       metadata: {}
       script:
         name: ''
-        image: alpine:3.18
+        image: 192.168.68.95:31443/docker.io/library/alpine:3.18
         command:
           - /bin/sh
           - -c
@@ -226,13 +226,13 @@ spec:
             echo ""
 
             echo "📂 Working directory: $(pwd)"
-            echo "📄 Dockerfile location: /workspace/Dockerfile"
+            echo "📄 Dockerfile location: /workspace/deploy/docker/Dockerfile"
             echo ""
 
             echo "🚧 Building image: ${IMAGE_NAME}:${IMAGE_TAG}"
             buildah bud \
               --format docker \
-              --file /workspace/Dockerfile \
+              --file /workspace/deploy/docker/Dockerfile \
               --tag ${IMAGE_NAME}:${IMAGE_TAG} \
               --tag ${IMAGE_NAME}:${IMAGE_TAG_LATEST} \
               /workspace
@@ -305,7 +305,7 @@ spec:
       metadata: {}
       script:
         name: ''
-        image: alpine:3.18
+        image: 192.168.68.95:31443/docker.io/library/alpine:3.18
         command:
           - /bin/sh
           - -c
