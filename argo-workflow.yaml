@@ -1,10 +1,6 @@
 metadata:
   name: comfyui-mcp-build
   namespace: dev
-  uid: 923eaeea-e664-4671-b78b-34e6a2bb039f
-  resourceVersion: '145675765'
-  generation: 1
-  creationTimestamp: '2025-12-25T13:41:44Z'
   labels:
     workflows.argoproj.io/creator: ae2f33f4-c8e4-46e3-96a4-c999934586f6
     workflows.argoproj.io/creator-email: admin.at.fyl080801.uk
@@ -65,8 +61,6 @@ spec:
                   value: '{{steps.set-tags.outputs.parameters.imageTagLatest}}'
                 - name: harborAuthSecret
                   value: '{{workflow.parameters.harborAuthSecret}}'
-                - name: dockerfileConfigMap
-                  value: '{{workflow.parameters.dockerfileConfigMap}}'
               artifacts:
                 - name: source
                   from: '{{steps.clone.outputs.artifacts.source}}'
@@ -206,7 +200,6 @@ spec:
           - name: imageTag
           - name: imageTagLatest
           - name: harborAuthSecret
-          - name: dockerfileConfigMap
         artifacts:
           - name: source
             path: /workspace
@@ -227,30 +220,19 @@ spec:
             IMAGE_NAME="{{inputs.parameters.imageName}}"
             IMAGE_TAG="{{inputs.parameters.imageTag}}"
             IMAGE_TAG_LATEST="{{inputs.parameters.imageTagLatest}}"
-            DOCKERFILE_CM="{{inputs.parameters.dockerfileConfigMap}}"
 
             echo "🔧 Verifying buildah installation..."
             buildah version
             echo ""
 
             echo "📂 Working directory: $(pwd)"
-
-            # 判断使用哪个 Dockerfile
-            if [ -n "$DOCKERFILE_CM" ] && [ "$DOCKERFILE_CM" != "" ]; then
-              echo "📄 Using Dockerfile from ConfigMap: $DOCKERFILE_CM"
-              DOCKERFILE_PATH="/workspace/Dockerfile.custom"
-            else
-              echo "📄 Using Dockerfile from source code"
-              DOCKERFILE_PATH="/workspace/Dockerfile"
-            fi
-
-            echo "📄 Dockerfile location: $DOCKERFILE_PATH"
+            echo "📄 Dockerfile location: /workspace/Dockerfile"
             echo ""
 
             echo "🚧 Building image: ${IMAGE_NAME}:${IMAGE_TAG}"
             buildah bud \
               --format docker \
-              --file $DOCKERFILE_PATH \
+              --file /workspace/Dockerfile \
               --tag ${IMAGE_NAME}:${IMAGE_TAG} \
               --tag ${IMAGE_NAME}:${IMAGE_TAG_LATEST} \
               /workspace
@@ -302,14 +284,6 @@ spec:
             cpu: 500m
             memory: 512Mi
         volumeMounts:
-          - name: dockerfile-volume
-            readOnly: true
-            mountPath: /workspace/Dockerfile.custom
-            subPath: Dockerfile
-          - name: dockerfile-volume
-            readOnly: true
-            mountPath: /workspace/.dockerignore
-            subPath: .dockerignore
           - name: harbor-ca
             readOnly: true
             mountPath: /etc/pki/tls/certs/ca-trust-source/anchors/harbor.crt
@@ -318,9 +292,9 @@ spec:
           privileged: true
           runAsUser: 0
       volumes:
-        - name: dockerfile-volume
-          configMap:
-            name: '{{inputs.parameters.dockerfileConfigMap}}'
+        - name: harbor-ca
+          secret:
+            secretName: '{{workflow.parameters.harborCaSecret}}'
             optional: true
     - name: notify
       inputs:
@@ -378,9 +352,6 @@ spec:
       - name: imageTag
         default: ''
         description: 镜像 tag（默认为 version-commit 格式）
-      - name: dockerfileConfigMap
-        default: ''
-        description: 自定义 Dockerfile 的 ConfigMap 名称（为空则使用源码中的 Dockerfile）
       - name: harborAuthSecret
         default: harbor-auth
         description: Harbor 认证信息 secret 名称
