@@ -7,6 +7,24 @@ This project provides a dual-API server in front of a ComfyUI instance:
 
 The service allows you to expose specific ComfyUI workflows as clean, user-friendly APIs with async job-based execution.
 
+## Project Structure
+
+This is a **pnpm workspace monorepo** containing:
+
+```
+comfyui-mcp/
+├── packages/
+│   ├── shared/              # Shared types and utilities
+│   └── server/              # MCP server implementation
+│       ├── src/             # Server source code
+│       └── deployment/      # Deployment configurations
+│           ├── docker/      # Docker & docker-compose
+│           └── kubernetes/  # K8s manifests & Argo workflows
+├── pnpm-workspace.yaml
+├── Makefile                 # Convenience commands
+└── package.json
+```
+
 ## Features
 
 - **Dual API Support**: Both RESTful API and MCP Protocol
@@ -21,15 +39,21 @@ The service allows you to expose specific ComfyUI workflows as clean, user-frien
 ## Quick Start
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (requires pnpm)
+pnpm install
 
 # Configure your environment
 cp .env.example .env
 cp config.example.json config.json
 
 # Start the server
-npm run dev
+pnpm dev
+```
+
+Or use Make:
+
+```bash
+make dev
 ```
 
 The server will start on:
@@ -375,7 +399,10 @@ MCP Protocol (AI Agents): http://localhost:8080/mcp
 
 ```bash
 # Build the image
-docker build -t comfyui-mcp .
+docker build -f packages/server/deployment/docker/Dockerfile -t comfyui-mcp .
+
+# Or use Make
+make docker-build
 
 # Run with Docker
 docker run -p 8080:8080 -p 3000:3000 \
@@ -383,7 +410,10 @@ docker run -p 8080:8080 -p 3000:3000 \
   comfyui-mcp
 
 # Or use docker-compose
-docker-compose up -d
+docker-compose -f packages/server/deployment/docker/docker-compose.yml up -d
+
+# Or use Make
+make docker-up
 ```
 
 Access:
@@ -402,16 +432,28 @@ Access:
 
 ### Deployment Steps
 
+**Option 1: Using Make (Recommended)**
+
+```bash
+# Deploy to Kubernetes
+make deploy-k8
+
+# Submit Argo Workflow for CI/CD
+make deploy-argo VERSION=1.0.0 REVISION=master
+```
+
+**Option 2: Manual Deployment**
+
 1. **Update Configuration Files**:
 
-   Edit `k8s-service.yaml` and update the following:
+   Edit `packages/server/deployment/kubernetes/k8s-service.yaml` and update:
    ```yaml
    # ⬇️ CHANGE THIS to your actual Ingress domain!
    - name: SERVER_DOMAIN
      value: 'comfyui-mcp.example.com'
    ```
 
-   Edit `ingress.yaml` and update the host:
+   Edit `packages/server/deployment/kubernetes/ingress.yaml` and update:
    ```yaml
    - host: comfyui-mcp.example.com  # ⬅️ CHANGE to your domain!
    ```
@@ -427,10 +469,10 @@ Access:
 3. **Apply Kubernetes manifests**:
    ```bash
    # Apply Service, Deployment, HPA, and PDB
-   kubectl apply -f k8s-service.yaml
+   kubectl apply -f packages/server/deployment/kubernetes/k8s-service.yaml
 
    # Apply Ingress
-   kubectl apply -f ingress.yaml
+   kubectl apply -f packages/server/deployment/kubernetes/ingress.yaml
    ```
 
 4. **Verify deployment**:
@@ -447,6 +489,8 @@ Access:
    # View logs
    kubectl logs -f -n dev -l app=comfyui-mcp
    ```
+
+**For complete deployment documentation, see: [packages/server/deployment/README.md](packages/server/deployment/README.md)**
 
 ### Important: SERVER_DOMAIN Configuration
 

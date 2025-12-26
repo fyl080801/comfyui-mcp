@@ -1,0 +1,3 @@
+# Symlink to packages/server/deployment/docker/Dockerfile
+# Build from monorepo root with: docker build -f packages/server/deployment/docker/Dockerfile .
+# Or use: docker build -t comfyui-mcp .

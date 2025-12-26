@@ -4,19 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a TypeScript-based MCP (Model Context Protocol) server that exposes ComfyUI workflows as clean API endpoints with **async job-based execution**. It acts as an intermediary layer that:
-1. Receives HTTP requests via FastMCP tools
-2. Creates async jobs for workflow execution
-3. Returns `job_id` immediately for status polling
-4. Executes workflows via WebSocket connection to ComfyUI
-5. Tracks progress and execution metadata
-6. Optionally uploads generated images to AWS S3
-7. Provides status query tools for job monitoring
+This is a **TypeScript-based monorepo** containing an MCP (Model Context Protocol) server that exposes ComfyUI workflows as clean API endpoints with **async job-based execution**. The project uses **pnpm workspaces** to manage multiple packages.
 
-The server runs on port 8080 using FastMCP's HTTP streaming transport.
+### Monorepo Structure
+
+```
+comfyui-mcp/
+├── packages/
+│   ├── shared/          # Shared types, utilities, and configuration
+│   └── server/          # MCP server implementation
+├── pnpm-workspace.yaml  # pnpm workspace configuration
+├── package.json         # Root package with workspace scripts
+├── Dockerfile           # Multi-stage build for monorepo
+└── tsconfig.json        # TypeScript project references
+```
+
+### Packages
+
+- **@comfyui-mcp/shared**: Common types, utilities, and configuration schemas used across the monorepo
+- **@comfyui-mcp/server**: FastMCP server that exposes ComfyUI workflows as API endpoints
 
 ## Key Features
 
+- **Monorepo Architecture**: Shared code managed via pnpm workspace with TypeScript project references
 - **Async Job Execution**: Tools return `job_id` immediately, execution runs in background
 - **Unified Query Endpoint**: Single `query_job` tool returns status during execution, results when completed
 - **Configurable Output Mapping**: Services can define structured outputs (images, videos, 3D models, audio, text, JSON)
@@ -28,22 +38,43 @@ The server runs on port 8080 using FastMCP's HTTP streaming transport.
 ## Development Commands
 
 ```bash
+# Install all dependencies (required for monorepo)
+pnpm install
+
 # Start development server
-npm run dev
+pnpm dev
 
-# Install dependencies
-npm install
+# Build all packages
+pnpm build
 
-# Build for production
-docker build -t comfyui-mcp .
+# Build specific package
+pnpm build:shared
+pnpm build:server
 
-# Run with Docker Compose
-docker-compose up
+# Start production server
+pnpm start
+
+# Clean all build artifacts
+pnpm clean
+
+# Format code
+pnpm format
+
+# Lint code
+pnpm lint
 ```
 
-Note: The project uses `tsx` for direct TypeScript execution (no build step required). Node.js v22 is managed via `mise.toml`.
+Note: The project uses `pnpm` as the package manager for workspace support. Node.js v22 is required.
 
 ## Architecture
+
+### Monorepo Package Dependencies
+
+```
+@comfyui-mcp/shared (no dependencies on other workspace packages)
+         ↓
+@comfyui-mcp/server (depends on @comfyui-mcp/shared)
+```
 
 ### Request Flow (Async)
 
@@ -59,55 +90,66 @@ Client → Query Job Tool → Check Status/Get Result (same endpoint)
 
 ### Key Components
 
-**[src/index.ts](src/index.ts)** - Server entry point
+**[packages/server/src/index.ts](packages/server/src/index.ts)** - Server entry point
 - Initializes FastMCP server on port 8080
 - Creates JobManager instance
 - Registers ComfyUI tools with job tracking
 - Optional periodic job cleanup
 
-**[src/job/index.ts](src/job/index.ts)** - Job module exports
+**[packages/server/src/job/index.ts](packages/server/src/job/index.ts)** - Job module exports
 - Exports JobManager, JobStorage, and type definitions
 
-**[src/job/manager.ts](src/job/manager.ts)** - Job lifecycle management
+**[packages/server/src/job/manager.ts](packages/server/src/job/manager.ts)** - Job lifecycle management
 - Creates jobs with PENDING status
 - Updates status: PENDING → RUNNING → COMPLETED/FAILED
 - Tracks progress, errors, and results
 - Provides job query and filtering methods
 
-**[src/job/storage.ts](src/job/storage.ts)** - In-memory job storage
+**[packages/server/src/job/storage.ts](packages/server/src/job/storage.ts)** - In-memory job storage
 - Map-based storage for job metadata
 - Filtering by service and status
 - Automatic cleanup of old jobs
 
-**[src/job/types.ts](src/job/types.ts)** - Type definitions
+**[packages/shared/src/types/index.ts](packages/shared/src/types/index.ts)** - Type definitions
 - JobStatus enum (pending, running, completed, failed, timeout, cancelled)
 - JobMetadata, JobProgress, JobResult, JobOutput interfaces
 - Support for structured output types: image, video, 3d_model, audio, text, json
 
-**[src/comfyui/index.ts](src/comfyui/index.ts)** - Tool registration
+**[packages/shared/src/config/types.ts](packages/shared/src/config/types.ts)** - Configuration types
+- ComfyUIConfig, S3Config, ServiceConfig, JobConfig interfaces
+- Shared across server and potentially future client packages
+
+**[packages/shared/src/utils/index.ts](packages/shared/src/utils/index.ts)** - Utility functions
+- downloadImageAsBase64: Download and convert images to base64
+- jsonTryParse: Safe JSON parsing with fallback
+- parseBoolean: Parse boolean strings with multiple format support
+- parseComfyUIUrl: Parse ComfyUI URL to extract protocol and host
+
+**[packages/server/src/comfyui/index.ts](packages/server/src/comfyui/index.ts)** - Tool registration
 - Dynamically creates FastMCP tools from `config.json` services
 - **Service tools**: Return `job_id` immediately, execute in background
 - **query_job**: Unified query tool (returns status for pending/running, results for completed/failed)
 - **list_jobs**: List jobs with optional filters
 - **comfyui_health_check**: Health check with job statistics
 
-**[src/comfyui/ws-enhanced.ts](src/comfyui/ws-enhanced.ts)** - Enhanced WebSocket client
+**[packages/server/src/comfyui/ws-enhanced.ts](packages/server/src/comfyui/ws-enhanced.ts)** - Enhanced WebSocket client
 - Extends base ComfyuiWebsocket with job tracking
 - Captures all ComfyUI events: progress, execution_cached, executing
 - Tracks node execution history
 - Updates job progress in real-time
 
-**[src/comfyui/ws.ts](src/comfyui/ws.ts)** - Base WebSocket client
+**[packages/server/src/comfyui/ws.ts](packages/server/src/comfyui/ws.ts)** - Base WebSocket client
 - Manages WebSocket connection to ComfyUI
 - Implements timeout handling (default 10 minutes)
 - Dispatches events: `executing`, `executed`, `error`
 
-**[src/config/index.ts](src/config/index.ts)** - Configuration loader
+**[packages/server/src/config/index.ts](packages/server/src/config/index.ts)** - Configuration loader
 - Loads `config.json` for service definitions
+- Uses types from @comfyui-mcp/shared
 - Supports optional `jobs` configuration
 - Environment variable overrides
 
-**[src/comfyui/s3.ts](src/comfyui/s3.ts)** - S3 upload handler
+**[packages/server/src/comfyui/s3.ts](packages/server/src/comfyui/s3.ts)** - S3 upload handler
 - Uploads images with date-based folder structure (YYYY/MM/DD)
 
 ### Configuration Structure
@@ -225,13 +267,16 @@ Plus resource items for each image with `uri` field.
 ## Docker Deployment
 
 ### Dockerfile
+
 Multi-stage build using Node.js 22 Alpine:
-- **Stage 1**: Install dependencies and copy source
+
+- **Stage 1**: Install pnpm, build shared package, then build server package
 - **Stage 2**: Production runtime with non-root user
 - Health check on `/mcp` endpoint
 - Exposes port 8080
 
 ### docker-compose.yml
+
 - ComfyUI-MCP service with configurable environment
 - Optional ComfyUI service (commented out)
 - Shared network for service communication
@@ -253,7 +298,15 @@ docker-compose up -d
 
 ## Important Implementation Details
 
+### Monorepo Best Practices
+
+1. **Shared Package**: All common types and utilities go in `@comfyui-mcp/shared`
+2. **Import Paths**: Use `@comfyui-mcp/shared` for importing from shared package
+3. **Build Order**: Always build shared package before server package
+4. **TypeScript References**: Root `tsconfig.json` uses project references for proper type checking
+
 ### Job Lifecycle
+
 1. **PENDING**: Job created, waiting to start
 2. **RUNNING**: WebSocket connected, execution in progress
 3. **COMPLETED**: Execution finished successfully

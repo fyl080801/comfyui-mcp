@@ -6,7 +6,7 @@ metadata:
     workflows.argoproj.io/creator-email: admin.at.fyl080801.uk
     workflows.argoproj.io/creator-preferred-username: admin
   annotations:
-    description: ComfyUI-MCP 构建工作流 - 克隆代码、集群内构建、上传 Harbor
+    description: ComfyUI-MCP 构建工作流（Monorepo）- 克隆代码、集群内构建、上传 Harbor。项目使用 pnpm workspace 管理，包含 @comfyui-mcp/shared 和 @comfyui-mcp/server 两个包。
   managedFields:
     - manager: argo
       operation: Update

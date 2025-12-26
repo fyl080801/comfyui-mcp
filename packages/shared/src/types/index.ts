@@ -153,7 +153,7 @@ export interface JobMetadata {
  */
 export interface JobFilters {
   /** Filter by service name */
-  service?: String
+  service?: string
   /** Filter by job status */
   status?: JobStatus
   /** Maximum number of jobs to return */

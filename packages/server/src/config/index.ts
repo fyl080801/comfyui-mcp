@@ -4,6 +4,29 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 import { z, ZodError } from 'zod'
 import logger from '../logger/index.js'
+import type {
+  Config,
+  ServiceConfig,
+  ComfyUIConfig,
+  S3Config,
+  JobConfig,
+  ServiceType,
+  ServiceParameter,
+  ServiceOutput
+} from '@comfyui-mcp/shared'
+import { parseBoolean, parseComfyUIUrl } from '@comfyui-mcp/shared/utils'
+
+// Re-export types for convenience
+export type {
+  Config,
+  ServiceConfig,
+  ComfyUIConfig,
+  S3Config,
+  JobConfig,
+  ServiceType,
+  ServiceParameter,
+  ServiceOutput
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -84,86 +107,8 @@ const ConfigFileSchema = z.object({
 })
 
 // ============================================================================
-// TypeScript Types
-// ============================================================================
-
-export type ServiceType = 'mcp' | 'api'
-
-export interface ComfyUIConfig {
-  address: string
-  clientId: string
-  host: string
-  httpProtocol: string
-  wsProtocol: string
-}
-
-export interface S3Config {
-  enabled: boolean
-  accessKeyId: string
-  secretAccessKey: string
-  bucket: string
-  region: string
-  endpoint: string
-  publicDomain: string
-  enablePathStyle: boolean
-}
-
-export interface ServiceConfig {
-  name: string
-  description: string
-  route?: string
-  comfyuiWorkflowApi: string
-  parameters: ServiceParameter[]
-  outputs?: ServiceOutput[]
-}
-
-export interface ServiceParameter {
-  name: string
-  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
-  description: string
-  required: boolean
-  default?: any
-  comfyuiNodeId: string
-  comfyuiWidgetName: string
-}
-
-export interface ServiceOutputSource {
-  nodeId: string
-  outputType?: 'images' | 'video' | 'mesh' | 'audio' | 'text'
-  index?: number
-}
-
-export interface ServiceOutput {
-  name: string
-  type: 'image' | 'video' | '3d_model' | 'audio' | 'text' | 'json'
-  description?: string
-  source: ServiceOutputSource
-}
-
-export interface JobConfig {
-  maxJobAge?: number | undefined
-  maxJobs?: number | undefined
-  cleanupInterval?: number | undefined
-}
-
-export interface Config {
-  comfyui: ComfyUIConfig
-  s3: S3Config
-  jobs?: JobConfig
-  services: ServiceConfig[]
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Parse a boolean string value with support for multiple formats
- */
-function parseBoolean(value: string | undefined, defaultValue: boolean = false): boolean {
-  if (value === undefined || value === '') return defaultValue
-  return ['true', '1', 'yes', 'on'].includes(value.toLowerCase())
-}
 
 /**
  * Get value with priority: env var > config value > default
@@ -196,28 +141,6 @@ function loadConfigFile(): z.infer<typeof ConfigFileSchema> {
   } catch (error) {
     logger.warn('Failed to parse config.json. Using default configuration.', error)
     return ConfigFileSchema.parse({})
-  }
-}
-
-/**
- * Parse ComfyUI URL to extract protocol and host
- */
-function parseComfyUIUrl(address: string): {
-  host: string
-  httpProtocol: string
-  wsProtocol: string
-} {
-  try {
-    const url = new URL(address)
-    const httpProtocol = url.protocol.slice(0, -1) // Remove trailing ':'
-    const wsProtocol = httpProtocol === 'https' ? 'wss' : 'ws'
-    return {
-      host: url.host,
-      httpProtocol,
-      wsProtocol,
-    }
-  } catch (error) {
-    throw new Error(`Invalid ComfyUI address: ${address}`)
   }
 }
 

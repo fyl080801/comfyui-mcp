@@ -1,15 +1,16 @@
-# Docker Compose for ComfyUI-MCP Server
+# Docker Compose for ComfyUI-MCP Server (Monorepo)
+# Build context should be the monorepo root directory
 # Usage:
-#   Development: docker-compose up
-#   Production: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+#   From monorepo root: docker-compose -f packages/server/deployment/docker/docker-compose.yml up
+#   Or use the root docker-compose.yml symlink
 
 version: '3.8'
 
 services:
   comfyui-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../../  # Monorepo root
+      dockerfile: packages/server/deployment/docker/Dockerfile
     container_name: comfyui-mcp-server
     ports:
       - "8080:8080"
@@ -37,9 +38,9 @@ services:
       - EXPRESS_PORT=3000
     volumes:
       # Mount config directory for easy configuration updates
-      - ./config.example.json:/app/config.json:ro
-      # Mount workflow files
-      - ./workflow_api.json:/app/workflow_api.json:ro
+      - ../../../config.example.json:/app/config.json:ro
+      # Mount workflow files directory
+      - ../../../workflows:/app/workflows:ro
     networks:
       - comfyui-network
     restart: unless-stopped
