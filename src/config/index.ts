@@ -285,28 +285,44 @@ export function loadConfig(): Config {
         name: service.name,
         description: service.description,
         comfyuiWorkflowApi: service.comfyui_workflow_api,
-        parameters: service.parameters.map((param) => ({
-          name: param.name,
-          type: param.type,
-          description: param.description,
-          required: param.required,
-          default: param.default,
-          comfyuiNodeId: param.comfyui_node_id,
-          comfyuiWidgetName: param.comfyui_widget_name,
-        })),
-        outputs: service.outputs?.map((output) => ({
-          name: output.name,
-          type: output.type,
-          description: output.description ?? undefined,
-          source: {
-            nodeId: output.source.node_id,
-            outputType: output.source.output_type,
-            index: output.source.index,
-          },
-        })) ?? undefined,
+        parameters: service.parameters.map((param) => {
+          const paramResult: ServiceParameter = {
+            name: param.name,
+            type: param.type,
+            description: param.description,
+            required: param.required,
+            comfyuiNodeId: param.comfyui_node_id,
+            comfyuiWidgetName: param.comfyui_widget_name,
+          }
+          if (param.default !== undefined) {
+            paramResult.default = param.default
+          }
+          return paramResult
+        }),
       }
       if (service.route !== undefined) {
         result.route = service.route
+      }
+      if (service.outputs !== undefined) {
+        result.outputs = service.outputs.map((output) => {
+          const outputResult: ServiceOutput = {
+            name: output.name,
+            type: output.type,
+            source: {
+              nodeId: output.source.node_id,
+            },
+          }
+          if (output.description !== undefined) {
+            outputResult.description = output.description
+          }
+          if (output.source.output_type !== undefined) {
+            outputResult.source.outputType = output.source.output_type
+          }
+          if (output.source.index !== undefined) {
+            outputResult.source.index = output.source.index
+          }
+          return outputResult
+        })
       }
       return result
     })
