@@ -39,8 +39,16 @@ const __dirname = path.dirname(__filename)
 // ============================================================================
 
 // Initialize dotenv - load from multiple locations with priority
-dotenv.config({ path: path.join(__dirname, '..', '..', '.env.local') })
-dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })
+// In development: packages/server/src/config -> ../../.env
+// In production: dist/config -> ../../.env
+let envRoot: string
+if (__dirname.includes('dist')) {
+  envRoot = path.join(__dirname, '..', '..')
+} else {
+  envRoot = path.join(__dirname, '..', '..', '..')
+}
+dotenv.config({ path: path.join(envRoot, '.env.local') })
+dotenv.config({ path: path.join(envRoot, '.env') })
 
 // ============================================================================
 // Configuration Schemas with Validation
@@ -125,7 +133,21 @@ function getEnvOrConfig<T>(envKey: string, configValue: T | undefined, defaultVa
  * Load and parse JSON configuration file
  */
 function loadConfigFile(): z.infer<typeof ConfigFileSchema> {
-  const projectRoot = path.join(__dirname, '..', '..')
+  // In development (src), __dirname is packages/server/src/config
+  // In production (dist), __dirname is dist/config
+  // We need to handle both cases
+  let projectRoot: string
+
+  if (__dirname.includes('dist')) {
+    // Production: built version at dist/config
+    // projectRoot should be the monorepo root
+    projectRoot = path.join(__dirname, '..', '..')
+  } else {
+    // Development: source at packages/server/src/config
+    // projectRoot should be the monorepo root
+    projectRoot = path.join(__dirname, '..', '..', '..')
+  }
+
   const configPath = path.join(projectRoot, 'config.json')
 
   // If config.json doesn't exist, return default values
@@ -309,7 +331,20 @@ export function resetConfigCache(): void {
  * @returns Parsed workflow JSON object
  */
 export function loadWorkflow(workflowName: string): Record<string, any> {
-  const projectRoot = path.join(__dirname, '..', '..')
+  // In development (src), __dirname is packages/server/src/config
+  // In production (dist), __dirname is dist/config
+  let projectRoot: string
+
+  if (__dirname.includes('dist')) {
+    // Production: built version at dist/config
+    // projectRoot should be the monorepo root
+    projectRoot = path.join(__dirname, '..', '..')
+  } else {
+    // Development: source at packages/server/src/config
+    // projectRoot should be the monorepo root
+    projectRoot = path.join(__dirname, '..', '..', '..')
+  }
+
   // Always read from workflows directory
   const fullPath = path.join(projectRoot, 'workflows', `${workflowName}.json`)
 

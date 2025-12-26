@@ -6,6 +6,9 @@ node_modules/
 dist/
 **/dist/
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Environment files
 .env
 .env.local

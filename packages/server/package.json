@@ -6,9 +6,9 @@
   "main": "./dist/index.js",
   "scripts": {
     "dev": "npx tsx src/index.ts",
-    "build": "tsc",
+    "build": "pnpm --filter @comfyui-mcp/shared build && tsc && node scripts/copy-build.js",
     "start": "node dist/index.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist *.tsbuildinfo"
   },
   "author": "",
   "license": "ISC",
