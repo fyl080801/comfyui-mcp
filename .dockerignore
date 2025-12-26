@@ -1,3 +1,7 @@
+# Source code (excluded in multi-stage build)
+src
+tsconfig.json
+
 # Dependencies
 node_modules
 npm-debug.log

@@ -2,13 +2,25 @@
  * RESTful API Routes for ComfyUI MCP Server
  *
  * This module defines RESTful API endpoints with proper HTTP methods:
- * - POST /api/v1/services/{service_name} - Execute a workflow
- * - GET /api/v1/jobs/{job_id} - Query job status
+ *
+ * Service Routes (auto-generated if not specified in config):
+ * - GET /api/v1/services - List all available services
+ * - GET /api/v1/services/:service_name - Get details of a specific service
+ * - POST /api/v1/services/:service_name - Execute a workflow
+ *
+ * Job Management:
  * - GET /api/v1/jobs - List jobs with filters
- * - GET /api/v1/jobs/{job_id}/result - Get job result
- * - DELETE /api/v1/jobs/{job_id} - Cancel/delete a job
+ * - GET /api/v1/jobs/:job_id - Query job status
+ * - GET /api/v1/jobs/:job_id/result - Get job result
+ * - DELETE /api/v1/jobs/:job_id - Cancel/delete a job
+ *
+ * System:
  * - GET /api/v1/health - Health check
- * - GET /api/v1/services - List available services
+ *
+ * Route Configuration:
+ * - API routes follow the pattern: /api/v1/services/:service_name
+ * - MCP routes follow the pattern: /mcp/:service_name (if explicitly defined in config)
+ * - The "route" field in config.json is optional and can be omitted
  */
 
 import type { Router, Request, Response, NextFunction } from 'express'
@@ -18,6 +30,7 @@ import type { ServiceConfig } from '../config/index.js'
 import { loadWorkflow } from '../config/index.js'
 import { fetchWithConfig } from '../http-client.js'
 import logger from '../logger/index.js'
+import type { JobStatus } from '../job/types.js'
 
 export interface CreateRouterOptions {
   jobManager: JobManager
@@ -224,7 +237,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
       })
 
       // Create job
-      const job = jobManager.createJob(serviceName, req.body, workflow)
+      const job = jobManager.createJob(serviceName!, req.body, workflow)
       logger.info(`Job created via REST API: ${job.jobId} for service: ${serviceName}`)
 
       // Import executeJobAsync from comfyui/index
@@ -274,7 +287,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
     try {
       const filters: {
         service?: string
-        status?: string
+        status?: JobStatus
         limit?: number
         offset?: number
       } = {}
@@ -283,7 +296,18 @@ export function createApiRouter(options: CreateRouterOptions): Router {
         filters.service = String(req.query.service)
       }
       if (req.query.status) {
-        filters.status = String(req.query.status)
+        const statusValue = String(req.query.status)
+        // Validate status value
+        if (
+          statusValue === 'pending' ||
+          statusValue === 'running' ||
+          statusValue === 'completed' ||
+          statusValue === 'failed' ||
+          statusValue === 'timeout' ||
+          statusValue === 'cancelled'
+        ) {
+          filters.status = statusValue as JobStatus
+        }
       }
       if (req.query.limit) {
         filters.limit = parseInt(String(req.query.limit), 10)
@@ -330,7 +354,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
    */
   router.get('/jobs/:job_id', (req: Request, res: Response) => {
     try {
-      const job = jobManager.getJob(req.params.job_id)
+      const job = jobManager.getJob(req.params.job_id!)
 
       if (!job) {
         return res.status(404).json({
@@ -377,7 +401,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
    */
   router.get('/jobs/:job_id/result', (req: Request, res: Response) => {
     try {
-      const job = jobManager.getJob(req.params.job_id)
+      const job = jobManager.getJob(req.params.job_id!)
 
       if (!job) {
         return res.status(404).json({
@@ -412,8 +436,8 @@ export function createApiRouter(options: CreateRouterOptions): Router {
         node: job.result.node,
         display_node: job.result.displayNode,
         node_history: job.result.nodeHistory.map((h) => ({
-          node: h.node,
-          type: h.type,
+          node: h.nodeId,
+          type: h.cached ? 'cached' : 'executed',
           executed_at: h.executedAt.toISOString(),
         })),
         parameters: job.parameters,
@@ -440,7 +464,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
    */
   router.delete('/jobs/:job_id', (req: Request, res: Response) => {
     try {
-      const job = jobManager.getJob(req.params.job_id)
+      const job = jobManager.getJob(req.params.job_id!)
 
       if (!job) {
         return res.status(404).json({
@@ -467,7 +491,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
       }
 
       // Update status to cancelled
-      jobManager.updateJobStatus(req.params.job_id, 'cancelled' as any, {
+      jobManager.updateJobStatus(req.params.job_id!, 'cancelled' as any, {
         completedAt: new Date(),
       })
 
@@ -569,18 +593,18 @@ export function createApiRouter(options: CreateRouterOptions): Router {
       message: 'The requested endpoint does not exist',
       available_endpoints: {
         services: {
-          list: 'GET /api/v1/services',
-          get: 'GET /api/v1/services/:service_name',
+          list_all: 'GET /api/v1/services',
+          get_details: 'GET /api/v1/services/:service_name',
           execute: 'POST /api/v1/services/:service_name',
         },
         jobs: {
           list: 'GET /api/v1/jobs',
-          get: 'GET /api/v1/jobs/:job_id',
-          result: 'GET /api/v1/jobs/:job_id/result',
+          get_status: 'GET /api/v1/jobs/:job_id',
+          get_result: 'GET /api/v1/jobs/:job_id/result',
           cancel: 'DELETE /api/v1/jobs/:job_id',
         },
         system: {
-          health: 'GET /api/v1/health',
+          health_check: 'GET /api/v1/health',
         },
       },
     })

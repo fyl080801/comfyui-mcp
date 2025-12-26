@@ -312,6 +312,9 @@ Then, edit `config.json`:
 - **`services`**: An array of API services you want to expose.
   - **`name`**: A unique name for your service (used in the API path).
   - **`description`**: Description of the service.
+  - **`route`** (optional): Custom route for the service. If omitted, routes are auto-generated:
+    - MCP services: `/mcp/{service_name}`
+    - API services: `/api/v1/services/{service_name}`
   - **`comfyui_workflow_api`**: The filename of the JSON file containing the ComfyUI workflow API.
   - **`parameters`**: Defines how the request body maps to the ComfyUI workflow.
     - `name`: The key in the incoming JSON request body.

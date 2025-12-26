@@ -570,11 +570,15 @@ export async function fetchWithConfig(
 
   // Use native fetch with our configuration
   try {
-    const response = await fetch(url, {
+    const fetchOptions: RequestInit = {
       ...options,
-      signal,
       headers,
-    })
+    }
+    // Only add signal if it's not null/undefined
+    if (signal) {
+      fetchOptions.signal = signal
+    }
+    const response = await fetch(url, fetchOptions)
 
     // Log response if debug mode is enabled
     if (process.env.DEBUG_HTTP === 'true') {

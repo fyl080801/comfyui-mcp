@@ -9,13 +9,17 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
-# Copy source code
+# Copy source code and config
 COPY src ./src
 COPY config*.json ./
+
+# Build TypeScript to JavaScript
+RUN npm run build
 
 # Stage 2: Production stage
 FROM node:22-alpine AS production
@@ -30,10 +34,14 @@ RUN addgroup -g 1001 -S comfyui && \
 # Set working directory
 WORKDIR /app
 
-# Copy from builder stage
-COPY --from=builder --chown=comfyui:comfyui /app/node_modules ./node_modules
-COPY --from=builder --chown=comfyui:comfyui /app/src ./src
-COPY --from=builder --chown=comfyui:comfyui /app/package*.json ./
+# Copy package files
+COPY --chown=comfyui:comfyui package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy compiled JavaScript from builder stage
+COPY --from=builder --chown=comfyui:comfyui /app/dist ./dist
 COPY --from=builder --chown=comfyui:comfyui /app/config*.json ./
 
 # Switch to non-root user
@@ -54,5 +62,5 @@ ENV NODE_ENV=production \
 # Run with dumb-init
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the server
-CMD ["node", "--import", "tsx", "src/index.ts"]
+# Start the server using compiled JavaScript
+CMD ["node", "dist/index.js"]

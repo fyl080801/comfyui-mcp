@@ -72,6 +72,8 @@ const ConfigFileSchema = z.object({
 // TypeScript Types
 // ============================================================================
 
+export type ServiceType = 'mcp' | 'api'
+
 export interface ComfyUIConfig {
   address: string
   clientId: string
@@ -325,14 +327,19 @@ export function resetConfigCache(): void {
 // ============================================================================
 
 /**
- * Load a workflow JSON file
+ * Load a workflow JSON file from the workflows directory
+ * @param workflowName - Name of the workflow file (e.g., "text_to_image" for "workflows/text_to_image.json")
+ * @returns Parsed workflow JSON object
  */
-export function loadWorkflow(workflowPath: string): Record<string, any> {
+export function loadWorkflow(workflowName: string): Record<string, any> {
   const projectRoot = path.join(__dirname, '..', '..')
-  const fullPath = path.join(projectRoot, workflowPath)
+  // Always read from workflows directory
+  const fullPath = path.join(projectRoot, 'workflows', `${workflowName}.json`)
 
   if (!fs.existsSync(fullPath)) {
-    throw new Error(`Workflow file not found: ${workflowPath}`)
+    throw new Error(
+      `Workflow file not found: ${workflowName}.json (looked in workflows directory)`
+    )
   }
 
   const workflowFile = fs.readFileSync(fullPath, 'utf-8')
@@ -376,4 +383,41 @@ export function getServices(): ServiceConfig[] {
  */
 export function getServiceByName(name: string): ServiceConfig | undefined {
   return loadConfig().services.find((s) => s.name === name)
+}
+
+/**
+ * Get the route for a service based on service type
+ * - For MCP services: returns `/mcp/{service_name}` if route is not defined
+ * - For API services: returns `/api/v1/services/{service_name}` if route is not defined
+ * - If route is explicitly defined in config, returns that value
+ */
+export function getServiceRoute(serviceName: string, serviceType: ServiceType = 'mcp'): string {
+  const service = getServiceByName(serviceName)
+  if (service?.route) {
+    return service.route
+  }
+
+  // Auto-generate route based on service type
+  switch (serviceType) {
+    case 'mcp':
+      return `/mcp/${serviceName}`
+    case 'api':
+      return `/api/v1/services/${serviceName}`
+    default:
+      return `/mcp/${serviceName}`
+  }
+}
+
+/**
+ * Get all service routes indexed by service name
+ */
+export function getServiceRoutes(serviceType: ServiceType = 'mcp'): Map<string, string> {
+  const config = loadConfig()
+  const routes = new Map<string, string>()
+
+  for (const service of config.services) {
+    routes.set(service.name, getServiceRoute(service.name, serviceType))
+  }
+
+  return routes
 }
