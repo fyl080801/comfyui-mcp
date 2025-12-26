@@ -2,8 +2,8 @@
 # Multi-stage build for production deployment (Monorepo)
 # Build context should be the monorepo root directory
 
-# Stage 1: Build stage
-FROM node:22-alpine AS builder
+# Stage 1: Dependencies stage
+FROM node:22-alpine AS dependencies
 
 # Install pnpm
 RUN npm install -g pnpm@9.15.0
@@ -17,9 +17,27 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/server/package.json ./packages/server/
 
 # Install all dependencies (including dev dependencies for build)
+# This layer will be cached if package.json files don't change
 RUN pnpm install --frozen-lockfile
 
-# Copy source code and config
+# Stage 2: Build stage
+FROM node:22-alpine AS builder
+
+# Install pnpm
+RUN npm install -g pnpm@9.15.0
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependencies from previous stage
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=dependencies /app/packages/server/node_modules ./packages/server/node_modules
+
+# Copy package files and source code
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/server/package.json ./packages/server/
 COPY packages/shared/src ./packages/shared/src
 COPY packages/server/src ./packages/server/src
 COPY packages/shared/tsconfig.json ./packages/shared/
@@ -28,10 +46,12 @@ COPY tsconfig.json ./
 COPY config*.json ./
 
 # Build shared package first, then server
-RUN pnpm --filter @comfyui-mcp/shared build
-RUN pnpm --filter @comfyui-mcp/server build
+RUN set -x && \
+    pnpm --filter @comfyui-mcp/shared build && \
+    pnpm --filter @comfyui-mcp/server build && \
+    echo "✅ Build completed successfully"
 
-# Stage 2: Production stage
+# Stage 3: Production stage
 FROM node:22-alpine AS production
 
 # Install dumb-init for proper signal handling
@@ -44,7 +64,7 @@ RUN addgroup -g 1001 -S comfyui && \
 # Set working directory
 WORKDIR /app
 
-# Copy package files from monorepo root
+# Copy package files
 COPY --chown=comfyui:comfyui package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --chown=comfyui:comfyui packages/shared/package.json ./packages/shared/
 COPY --chown=comfyui:comfyui packages/server/package.json ./packages/server/
@@ -52,7 +72,7 @@ COPY --chown=comfyui:comfyui packages/server/package.json ./packages/server/
 # Install pnpm
 RUN npm install -g pnpm@9.15.0
 
-# Install only production dependencies for all workspace packages
+# Install only production dependencies
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy compiled JavaScript from builder stage
@@ -60,7 +80,7 @@ COPY --from=builder --chown=comfyui:comfyui /app/packages/server/dist ./packages
 COPY --from=builder --chown=comfyui:comfyui /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder --chown=comfyui:comfyui /app/config*.json ./
 
-# Create logs directory with proper permissions before switching user
+# Create logs directory with proper permissions
 RUN mkdir -p /app/logs && \
     chown -R comfyui:comfyui /app/logs
 

@@ -10,6 +10,7 @@
 import type { ServiceConfig } from './config/index.js'
 import type { Request, Response, NextFunction } from 'express'
 import type { JobManager } from './job/index.js'
+import type { Express } from 'express'
 import express from 'express'
 import swaggerUi from 'swagger-ui-express'
 import { createSwaggerSpec } from './swagger.js'
@@ -21,7 +22,7 @@ export interface CreateExpressAppOptions {
   jobManager: JobManager
 }
 
-export function createExpressApp(options: CreateExpressAppOptions) {
+export function createExpressApp(options: CreateExpressAppOptions): Express {
   const { services, jobManager } = options
   const app = express()
 
@@ -177,7 +178,7 @@ export function createExpressApp(options: CreateExpressAppOptions) {
  * Legacy function for backward compatibility
  * @deprecated Use createExpressApp with jobManager instead
  */
-export function createSwaggerExpressApp(services: ServiceConfig[]) {
+export function createSwaggerExpressApp(services: ServiceConfig[]): Express {
   console.warn(
     'createSwaggerExpressApp is deprecated. Use createExpressApp with jobManager for full REST API support.',
   )
