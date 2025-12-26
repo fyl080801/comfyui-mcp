@@ -14,6 +14,7 @@ import express from 'express'
 import swaggerUi from 'swagger-ui-express'
 import { createSwaggerSpec } from './swagger.js'
 import { createApiRouter } from './api/routes.js'
+import { createWorkflowRouter } from './api/workflow-routes.js'
 
 export interface CreateExpressAppOptions {
   services: ServiceConfig[]
@@ -48,6 +49,10 @@ export function createExpressApp(options: CreateExpressAppOptions) {
   // ============================================================================
   // RESTful API Routes
   // ============================================================================
+
+  // Mount workflow management router first (before apiRouter with its 404 handler)
+  const workflowRouter = createWorkflowRouter()
+  app.use('/api/v1', workflowRouter)
 
   // Mount RESTful API router
   const apiRouter = createApiRouter({ jobManager, services })
@@ -92,6 +97,14 @@ export function createExpressApp(options: CreateExpressAppOptions) {
             get: 'GET /api/v1/jobs/:job_id',
             result: 'GET /api/v1/jobs/:job_id/result',
             cancel: 'DELETE /api/v1/jobs/:job_id',
+          },
+          workflows: {
+            list: 'GET /api/v1/workflows',
+            get: 'GET /api/v1/workflows/:id',
+            create: 'POST /api/v1/workflows',
+            upload: 'POST /api/v1/workflows/upload',
+            update: 'PUT /api/v1/workflows/:id',
+            delete: 'DELETE /api/v1/workflows/:id',
           },
           system: {
             health: 'GET /api/v1/health',

@@ -381,6 +381,313 @@ export function createSwaggerSpec(services: ServiceConfig[]) {
       },
     },
 
+    // Workflows endpoints
+    '/api/v1/workflows': {
+      get: {
+        tags: ['Workflows'],
+        summary: 'List All Workflows',
+        description: 'Get a list of all ComfyUI workflow files with optional pagination and search',
+        parameters: [
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            description: 'Maximum number of workflows to return',
+            schema: { type: 'number' },
+          },
+          {
+            name: 'offset',
+            in: 'query',
+            required: false,
+            description: 'Offset for pagination',
+            schema: { type: 'number', default: 0 },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            required: false,
+            description: 'Search term to filter workflows by name',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Workflows retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'number' },
+                    count: { type: 'number' },
+                    offset: { type: 'number' },
+                    limit: { type: 'number' },
+                    workflows: {
+                      type: 'array',
+                      items: {
+                        $ref: '#/components/schemas/WorkflowMetadata',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Workflows'],
+        summary: 'Create Workflow (JSON)',
+        description: 'Create a new workflow from JSON body',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'content'],
+                properties: {
+                  name: {
+                    type: 'string',
+                    description: 'Workflow name',
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'Workflow description',
+                  },
+                  filename: {
+                    type: 'string',
+                    description: 'Optional filename (will be generated if not provided)',
+                  },
+                  content: {
+                    type: 'object',
+                    description: 'ComfyUI workflow JSON content',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Workflow created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/WorkflowDetail',
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - invalid input',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+          '409': {
+            description: 'Conflict - workflow already exists',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/workflows/upload': {
+      post: {
+        tags: ['Workflows'],
+        summary: 'Upload Workflow (File)',
+        description: 'Upload a workflow file as multipart/form-data',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'JSON workflow file',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Workflow uploaded successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/WorkflowDetail',
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - invalid file',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/workflows/{id}': {
+      get: {
+        tags: ['Workflows'],
+        summary: 'Get Workflow',
+        description: 'Get a specific workflow by ID',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Workflow ID (filename without .json extension)',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Workflow retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/WorkflowDetail',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Workflow not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+      put: {
+        tags: ['Workflows'],
+        summary: 'Update Workflow',
+        description: 'Update an existing workflow',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Workflow ID (filename without .json extension)',
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: {
+                    type: 'string',
+                    description: 'New workflow name',
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'New workflow description',
+                  },
+                  content: {
+                    type: 'object',
+                    description: 'New workflow JSON content',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Workflow updated successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/WorkflowDetail',
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Workflow not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ['Workflows'],
+        summary: 'Delete Workflow',
+        description: 'Delete a workflow',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Workflow ID (filename without .json extension)',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Workflow deleted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                    workflow_id: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Workflow not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
     // System endpoints
     '/api/v1/health': {
       get: {
@@ -460,6 +767,7 @@ This server exposes ComfyUI workflows as clean RESTful API endpoints with asynch
 - **Complete Metadata**: Includes execution time, node history, and parameters
 - **Progress Tracking**: Real-time progress updates during execution
 - **S3 Upload**: Optional image upload to AWS S3
+- **Workflow Management**: CRUD operations for managing ComfyUI workflow files
 
 ## RESTful API Endpoints
 
@@ -472,6 +780,14 @@ This server exposes ComfyUI workflows as clean RESTful API endpoints with asynch
 - \`GET /api/v1/jobs\` - List jobs with filters
 - \`GET /api/v1/jobs/{job_id}\` - Query job status (pending/running) or result (completed/failed)
 - \`DELETE /api/v1/jobs/{job_id}\` - Cancel a job
+
+### Workflows
+- \`GET /api/v1/workflows\` - List all workflows
+- \`GET /api/v1/workflows/{id}\` - Get workflow details
+- \`POST /api/v1/workflows\` - Create a new workflow (JSON)
+- \`POST /api/v1/workflows/upload\` - Upload a workflow file
+- \`PUT /api/v1/workflows/{id}\` - Update a workflow
+- \`DELETE /api/v1/workflows/{id}\` - Delete a workflow
 
 ### System
 - \`GET /api/v1/health\` - Health check with statistics
@@ -501,6 +817,18 @@ curl -X POST http://localhost:3000/api/v1/services/text_to_image \\
 
 # 3. Query job status or result (same endpoint, returns based on job state)
 curl http://localhost:3000/api/v1/jobs/{job_id}
+
+# 4. List workflows
+curl http://localhost:3000/api/v1/workflows
+
+# 5. Create a new workflow
+curl -X POST http://localhost:3000/api/v1/workflows \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "my_workflow",
+    "description": "My custom workflow",
+    "content": { ... }
+  }'
 \`\`\`
 
 ## MCP Protocol
@@ -531,6 +859,10 @@ The server also supports the MCP (Model Context Protocol) on port 8080 for AI ag
         {
           name: 'Jobs',
           description: 'Job status and result queries',
+        },
+        {
+          name: 'Workflows',
+          description: 'Workflow management (CRUD operations)',
         },
         {
           name: 'System',
@@ -773,6 +1105,100 @@ The server also supports the MCP (Model Context Protocol) on port 8080 for AI ag
                 type: 'string',
                 description: 'S3 URL (if S3 upload is enabled)',
                 format: 'uri',
+              },
+            },
+          },
+          WorkflowMetadata: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'Workflow ID (filename without .json extension)',
+              },
+              name: {
+                type: 'string',
+                description: 'Workflow display name',
+              },
+              filename: {
+                type: 'string',
+                description: 'Workflow filename (with .json extension)',
+              },
+              description: {
+                type: 'string',
+                description: 'Workflow description',
+              },
+              created_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Creation timestamp',
+              },
+              updated_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Last update timestamp',
+              },
+              size: {
+                type: 'number',
+                description: 'File size in bytes',
+              },
+              node_count: {
+                type: 'number',
+                description: 'Number of nodes in the workflow',
+              },
+              links: {
+                type: 'object',
+                properties: {
+                  self: { type: 'string' },
+                },
+              },
+            },
+          },
+          WorkflowDetail: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'Workflow ID (filename without .json extension)',
+              },
+              name: {
+                type: 'string',
+                description: 'Workflow display name',
+              },
+              filename: {
+                type: 'string',
+                description: 'Workflow filename (with .json extension)',
+              },
+              description: {
+                type: 'string',
+                description: 'Workflow description',
+              },
+              created_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Creation timestamp',
+              },
+              updated_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Last update timestamp',
+              },
+              size: {
+                type: 'number',
+                description: 'File size in bytes',
+              },
+              node_count: {
+                type: 'number',
+                description: 'Number of nodes in the workflow',
+              },
+              content: {
+                type: 'object',
+                description: 'ComfyUI workflow JSON content',
+              },
+              links: {
+                type: 'object',
+                properties: {
+                  self: { type: 'string' },
+                },
               },
             },
           },
