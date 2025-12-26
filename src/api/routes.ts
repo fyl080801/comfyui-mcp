@@ -10,8 +10,7 @@
  *
  * Job Management:
  * - GET /api/v1/jobs - List jobs with filters
- * - GET /api/v1/jobs/:job_id - Query job status
- * - GET /api/v1/jobs/:job_id/result - Get job result
+ * - GET /api/v1/jobs/:job_id - Query job status (pending/running) or result (completed/failed)
  * - DELETE /api/v1/jobs/:job_id - Cancel/delete a job
  *
  * System:
@@ -256,11 +255,10 @@ export function createApiRouter(options: CreateRouterOptions): Router {
         job_id: job.jobId,
         status: 'pending',
         service: serviceName,
-        message: 'Job created successfully. Use GET /api/v1/jobs/{job_id} to check progress.',
+        message: 'Job created successfully. Use GET /api/v1/jobs/{job_id} to check progress and get results.',
         created_at: job.createdAt.toISOString(),
         links: {
-          status: `/api/v1/jobs/${job.jobId}`,
-          result: `/api/v1/jobs/${job.jobId}/result`,
+          self: `/api/v1/jobs/${job.jobId}`,
         },
       })
     } catch (error) {
@@ -335,7 +333,6 @@ export function createApiRouter(options: CreateRouterOptions): Router {
           completed_at: job.completedAt?.toISOString(),
           links: {
             self: `/api/v1/jobs/${job.jobId}`,
-            result: `/api/v1/jobs/${job.jobId}/result`,
           },
         })),
       })
@@ -350,7 +347,10 @@ export function createApiRouter(options: CreateRouterOptions): Router {
 
   /**
    * GET /api/v1/jobs/:job_id
-   * Query job status
+   * Query job status or result (unified endpoint)
+   * - For pending/running jobs: returns status with progress
+   * - For completed jobs: returns full result with outputs
+   * - For failed jobs: returns error information
    */
   router.get('/jobs/:job_id', (req: Request, res: Response) => {
     try {
@@ -363,94 +363,87 @@ export function createApiRouter(options: CreateRouterOptions): Router {
         })
       }
 
-      res.json({
+      // For pending or running jobs, return status
+      if (job.status === 'pending' || job.status === 'running') {
+        return res.json({
+          job_id: job.jobId,
+          service: job.service,
+          status: job.status,
+          created_at: job.createdAt.toISOString(),
+          started_at: job.startedAt?.toISOString(),
+          completed_at: job.completedAt?.toISOString(),
+          progress: job.progress
+            ? {
+                current: job.progress.current,
+                maximum: job.progress.maximum,
+                node: job.progress.node,
+                cached_nodes: job.progress.cachedNodes,
+                timestamp: job.progress.timestamp.toISOString(),
+              }
+            : undefined,
+          parameters: job.parameters,
+          links: {
+            self: `/api/v1/jobs/${job.jobId}`,
+          },
+        })
+      }
+
+      // For completed jobs, return full result
+      if (job.status === 'completed') {
+        if (!job.result) {
+          return res.status(500).json({
+            error: 'Job completed but no result available',
+            job_id: req.params.job_id,
+          })
+        }
+
+        return res.json({
+          job_id: job.jobId,
+          service: job.service,
+          status: job.status,
+          execution_time: `${job.result.executionTime}ms`,
+          total_images: job.result.images.length,
+          prompt_id: job.result.promptId,
+          node: job.result.node,
+          display_node: job.result.displayNode,
+          node_history: job.result.nodeHistory.map((h) => ({
+            node: h.nodeId,
+            type: h.cached ? 'cached' : 'executed',
+            executed_at: h.executedAt.toISOString(),
+          })),
+          parameters: job.parameters,
+          // Include structured outputs if available
+          outputs: job.result.outputs,
+          // Include all images
+          images: job.result.images.map((image) => ({
+            filename: image.filename,
+            subfolder: image.subfolder,
+            type: image.type,
+            url: image.url,
+            s3_url: image.s3Url,
+          })),
+          links: {
+            self: `/api/v1/jobs/${job.jobId}`,
+          },
+        })
+      }
+
+      // For failed, timeout, or cancelled jobs
+      return res.json({
         job_id: job.jobId,
         service: job.service,
         status: job.status,
         created_at: job.createdAt.toISOString(),
         started_at: job.startedAt?.toISOString(),
         completed_at: job.completedAt?.toISOString(),
-        progress: job.progress
-          ? {
-              current: job.progress.current,
-              maximum: job.progress.maximum,
-              node: job.progress.node,
-              cached_nodes: job.progress.cachedNodes,
-              timestamp: job.progress.timestamp.toISOString(),
-            }
-          : undefined,
-        parameters: job.parameters,
         error: job.error,
+        parameters: job.parameters,
         links: {
           self: `/api/v1/jobs/${job.jobId}`,
-          result: `/api/v1/jobs/${job.jobId}/result`,
         },
       })
     } catch (error) {
       logger.error(`REST API GET /api/v1/jobs/${req.params.job_id} - 500`, error)
-      res.status(500).json({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
-  })
-
-  /**
-   * GET /api/v1/jobs/:job_id/result
-   * Get job result
-   */
-  router.get('/jobs/:job_id/result', (req: Request, res: Response) => {
-    try {
-      const job = jobManager.getJob(req.params.job_id!)
-
-      if (!job) {
-        return res.status(404).json({
-          error: 'Job not found',
-          job_id: req.params.job_id,
-        })
-      }
-
-      if (job.status !== 'completed') {
-        return res.status(400).json({
-          error: 'Job not completed',
-          job_id: req.params.job_id,
-          current_status: job.status,
-          message: 'Result is only available for completed jobs',
-        })
-      }
-
-      if (!job.result) {
-        return res.status(400).json({
-          error: 'Job completed but no result available',
-          job_id: req.params.job_id,
-        })
-      }
-
-      res.json({
-        job_id: job.jobId,
-        service: job.service,
-        status: job.status,
-        execution_time: `${job.result.executionTime}ms`,
-        total_images: job.result.images.length,
-        prompt_id: job.result.promptId,
-        node: job.result.node,
-        display_node: job.result.displayNode,
-        node_history: job.result.nodeHistory.map((h) => ({
-          node: h.nodeId,
-          type: h.cached ? 'cached' : 'executed',
-          executed_at: h.executedAt.toISOString(),
-        })),
-        parameters: job.parameters,
-        images: job.result.images.map((image) => ({
-          filename: image.filename,
-          subfolder: image.subfolder,
-          type: image.type,
-          url: image.url,
-          s3_url: image.s3Url,
-        })),
-      })
-    } catch (error) {
-      logger.error(`REST API GET /api/v1/jobs/${req.params.job_id}/result - 500`, error)
       res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -599,8 +592,7 @@ export function createApiRouter(options: CreateRouterOptions): Router {
         },
         jobs: {
           list: 'GET /api/v1/jobs',
-          get_status: 'GET /api/v1/jobs/:job_id',
-          get_result: 'GET /api/v1/jobs/:job_id/result',
+          query: 'GET /api/v1/jobs/:job_id (returns status or result based on job state)',
           cancel: 'DELETE /api/v1/jobs/:job_id',
         },
         system: {

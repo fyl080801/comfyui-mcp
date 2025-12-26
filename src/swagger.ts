@@ -12,6 +12,16 @@ import type { ServiceConfig } from './config/index.js'
  * Generate Swagger/OpenAPI specification dynamically from config
  */
 export function createSwaggerSpec(services: ServiceConfig[]) {
+  // Get server domain from environment variable or use localhost
+  const serverDomain = process.env.SERVER_DOMAIN || 'localhost'
+  const expressPort = process.env.EXPRESS_PORT || '3000'
+
+  // Detect if domain already includes protocol (http:// or https://)
+  const hasProtocol = /^https?:\/\//i.test(serverDomain)
+  const protocol = hasProtocol ? '' : 'http://'
+  const serverUrl = `${protocol}${serverDomain}:${expressPort}`
+  const mcpUrl = `${protocol}${serverDomain}:8080`
+
   const servicePaths: Record<string, any> = {}
 
   // Generate paths for each service tool
@@ -261,8 +271,8 @@ export function createSwaggerSpec(services: ServiceConfig[]) {
     '/api/v1/jobs/{job_id}': {
       get: {
         tags: ['Jobs'],
-        summary: 'Get Job Status',
-        description: 'Query the status and progress of a ComfyUI job by job ID',
+        summary: 'Query Job (Unified Endpoint)',
+        description: 'Query job status or result. Returns status for pending/running jobs, and complete results (including outputs) for completed/failed jobs.',
         parameters: [
           {
             name: 'job_id',
@@ -274,11 +284,14 @@ export function createSwaggerSpec(services: ServiceConfig[]) {
         ],
         responses: {
           '200': {
-            description: 'Job status retrieved successfully',
+            description: 'Job information retrieved successfully. Response format depends on job status.',
             content: {
               'application/json': {
                 schema: {
-                  $ref: '#/components/schemas/JobStatus',
+                  oneOf: [
+                    { $ref: '#/components/schemas/JobStatus' },
+                    { $ref: '#/components/schemas/JobResult' },
+                  ],
                 },
               },
             },
@@ -320,54 +333,6 @@ export function createSwaggerSpec(services: ServiceConfig[]) {
                     status: { type: 'string', enum: ['cancelled'] },
                     message: { type: 'string' },
                   },
-                },
-              },
-            },
-          },
-          '404': {
-            description: 'Job not found',
-            content: {
-              'application/json': {
-                schema: {
-                  $ref: '#/components/schemas/Error',
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/api/v1/jobs/{job_id}/result': {
-      get: {
-        tags: ['Jobs'],
-        summary: 'Get Job Result',
-        description: 'Get the result of a completed job including images and metadata',
-        parameters: [
-          {
-            name: 'job_id',
-            in: 'path',
-            required: true,
-            description: 'The job ID to get results for',
-            schema: { type: 'string' },
-          },
-        ],
-        responses: {
-          '200': {
-            description: 'Job result retrieved successfully',
-            content: {
-              'application/json': {
-                schema: {
-                  $ref: '#/components/schemas/JobResult',
-                },
-              },
-            },
-          },
-          '400': {
-            description: 'Job not completed or not found',
-            content: {
-              'application/json': {
-                schema: {
-                  $ref: '#/components/schemas/Error',
                 },
               },
             },
@@ -475,8 +440,7 @@ This server exposes ComfyUI workflows as clean RESTful API endpoints with asynch
 
 ### Jobs
 - \`GET /api/v1/jobs\` - List jobs with filters
-- \`GET /api/v1/jobs/{job_id}\` - Get job status
-- \`GET /api/v1/jobs/{job_id}/result\` - Get job result
+- \`GET /api/v1/jobs/{job_id}\` - Query job status (pending/running) or result (completed/failed)
 - \`DELETE /api/v1/jobs/{job_id}\` - Cancel a job
 
 ### System
@@ -505,11 +469,8 @@ curl -X POST http://localhost:3000/api/v1/services/text_to_image \\
 
 # Response: { "job_id": "uuid", "status": "pending", ... }
 
-# 3. Query job status
+# 3. Query job status or result (same endpoint, returns based on job state)
 curl http://localhost:3000/api/v1/jobs/{job_id}
-
-# 4. Get job result (when completed)
-curl http://localhost:3000/api/v1/jobs/{job_id}/result
 \`\`\`
 
 ## MCP Protocol
@@ -524,11 +485,11 @@ The server also supports the MCP (Model Context Protocol) on port 8080 for AI ag
       },
       servers: [
         {
-          url: 'http://localhost:3000',
-          description: 'Development server (RESTful API + Swagger UI)',
+          url: serverUrl,
+          description: 'RESTful API server (Swagger UI + API endpoints)',
         },
         {
-          url: 'http://localhost:8080',
+          url: mcpUrl,
           description: 'MCP endpoint (AI agent protocol)',
         },
       ],
@@ -707,7 +668,6 @@ The server also supports the MCP (Model Context Protocol) on port 8080 for AI ag
                 type: 'object',
                 properties: {
                   self: { type: 'string' },
-                  result: { type: 'string' },
                 },
               },
             },
@@ -736,10 +696,34 @@ The server also supports the MCP (Model Context Protocol) on port 8080 for AI ag
                 },
               },
               parameters: { type: 'object' },
+              outputs: {
+                type: 'array',
+                description: 'Structured outputs based on service output mapping',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Output name' },
+                    type: {
+                      type: 'string',
+                      enum: ['image', 'video', '3d_model', 'audio', 'text', 'json'],
+                    },
+                    description: { type: 'string', description: 'Output description' },
+                    filename: { type: 'string', description: 'Filename for file-based outputs' },
+                    url: { type: 'string', description: 'ComfyUI URL' },
+                    s3_url: { type: 'string', description: 'S3 URL if enabled' },
+                  },
+                },
+              },
               images: {
                 type: 'array',
                 items: {
                   $ref: '#/components/schemas/Image',
+                },
+              },
+              links: {
+                type: 'object',
+                properties: {
+                  self: { type: 'string' },
                 },
               },
             },

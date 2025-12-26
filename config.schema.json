@@ -113,6 +113,51 @@
                 }
               }
             }
+          },
+          "outputs": {
+            "type": "array",
+            "description": "Output definitions for mapping ComfyUI results to structured output",
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "source"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Output field name"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["image", "video", "3d_model", "audio", "text", "json"],
+                  "description": "Output data type"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Output description"
+                },
+                "source": {
+                  "type": "object",
+                  "description": "Source configuration for extracting output from ComfyUI result",
+                  "required": ["node_id"],
+                  "properties": {
+                    "node_id": {
+                      "type": "string",
+                      "description": "ComfyUI node ID that produces this output"
+                    },
+                    "output_type": {
+                      "type": "string",
+                      "enum": ["images", "video", "mesh", "audio", "text"],
+                      "description": "Type of output from the node",
+                      "default": "images"
+                    },
+                    "index": {
+                      "type": "number",
+                      "description": "Index for multiple outputs (0-based)",
+                      "default": 0
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

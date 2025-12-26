@@ -19,7 +19,18 @@ The Swagger UI server runs on port **3000** by default (configurable via `EXPRES
 ```bash
 # Express server port for Swagger UI
 EXPRESS_PORT=3000
+
+# Server domain for Swagger documentation and API requests
+# Used in Swagger UI's "Try it out" feature to set the correct base URL
+SERVER_DOMAIN=localhost
 ```
+
+**SERVER_DOMAIN** Examples:
+
+- Local development: `SERVER_DOMAIN=localhost`
+- Production server: `SERVER_DOMAIN=api.example.com`
+- With custom port: `SERVER_DOMAIN=localhost:3000`
+- With HTTPS: `SERVER_DOMAIN=https://api.example.com`
 
 ## Features
 
@@ -35,9 +46,8 @@ All registered workflow services from your `config.json` are automatically docum
 
 ### 2. **Job Management**
 Documentation for all job-related endpoints:
-- `query_job_status` - Query job status and progress
+- `query_job` - Query job status or result (unified endpoint returns status during execution, results when completed)
 - `list_jobs` - List jobs with filters
-- `get_job_result` - Get completed job results
 
 ### 3. **System**
 - `comfyui_health_check` - Health check and statistics
@@ -84,7 +94,7 @@ Each service endpoint (like `text_to_image`) accepts:
 }
 ```
 
-### Job Status Endpoint
+### Job Query Endpoint (Unified)
 
 **Request:**
 ```json
@@ -93,7 +103,7 @@ Each service endpoint (like `text_to_image`) accepts:
 }
 ```
 
-**Response:**
+**Response (when job is pending/running):**
 ```json
 {
   "job_id": "...",
@@ -105,23 +115,14 @@ Each service endpoint (like `text_to_image`) accepts:
     "current": 5,
     "maximum": 8,
     "node": "4",
-    "cachedNodes": ["1", "17", "18"],
+    "cached_nodes": ["1", "17", "18"],
     "timestamp": "2025-12-24T10:30:15.000Z"
   },
   "parameters": { "prompt": "a beautiful sunset" }
 }
 ```
 
-### Job Result Endpoint
-
-**Request:**
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Response:** Includes metadata and all generated images with URLs.
+**Response (when job is completed):** Includes metadata, structured outputs, and all generated images with URLs.
 
 ## Docker Deployment
 

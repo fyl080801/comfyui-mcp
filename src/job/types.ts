@@ -51,6 +51,30 @@ export interface JobImage {
 }
 
 /**
+ * Generic output resource from a completed job
+ */
+export interface JobOutput {
+  /** Output name as defined in service config */
+  name: string
+  /** Output data type */
+  type: 'image' | 'video' | '3d_model' | 'audio' | 'text' | 'json'
+  /** Optional description */
+  description?: string
+  /** Original filename from ComfyUI (for file-based outputs) */
+  filename?: string
+  /** Subfolder path within ComfyUI output */
+  subfolder?: string
+  /** Direct ComfyUI URL (for file-based outputs) */
+  url?: string
+  /** S3 URL if S3 upload is enabled (for file-based outputs) */
+  s3Url?: string
+  /** Text content (for text/json outputs) */
+  content?: string
+  /** Source node ID that produced this output */
+  sourceNodeId?: string
+}
+
+/**
  * Node execution history entry
  */
 export interface NodeExecutionHistoryEntry {
@@ -68,6 +92,8 @@ export interface NodeExecutionHistoryEntry {
 export interface JobResult {
   /** All images output by the workflow */
   images: JobImage[]
+  /** Structured outputs based on service output mapping */
+  outputs?: JobOutput[]
   /** The node that produced this result */
   node: string
   /** Display node ID from ComfyUI */

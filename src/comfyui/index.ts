@@ -383,13 +383,13 @@ export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
   })
 
   // ============================================================================
-  // Status Query Tools
+  // Query Job Tool (Unified - returns status during execution, result when completed)
   // ============================================================================
 
-  // Query Job Status
+  // Query Job - Returns status for pending/running jobs, result for completed/failed jobs
   server.addTool({
-    name: 'query_job_status',
-    description: 'Query the status of a ComfyUI job by job ID',
+    name: 'query_job',
+    description: 'Query the status or result of a ComfyUI job by job ID. Returns status information for pending/running jobs, and complete results (including outputs) for completed/failed jobs.',
     parameters: z.object({
       job_id: z.string().describe('The job ID to query'),
     }),
@@ -414,6 +414,119 @@ export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
         }
       }
 
+      // For pending or running jobs, return status
+      if (job.status === 'pending' || job.status === 'running') {
+        const response = {
+          job_id: job.jobId,
+          service: job.service,
+          status: job.status,
+          created_at: job.createdAt.toISOString(),
+          started_at: job.startedAt?.toISOString(),
+          completed_at: job.completedAt?.toISOString(),
+          progress: job.progress
+            ? {
+                ...job.progress,
+                timestamp: job.progress.timestamp.toISOString(),
+              }
+            : undefined,
+          parameters: job.parameters,
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(response, null, 2),
+            },
+          ],
+        }
+      }
+
+      // For completed jobs, return full result with outputs
+      if (job.status === 'completed') {
+        if (!job.result) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    error: 'Job completed but no result available',
+                    job_id: args.job_id,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          }
+        }
+
+        // Build metadata
+        const metadata = {
+          job_id: job.jobId,
+          service: job.service,
+          status: job.status,
+          execution_time: `${job.result.executionTime}ms`,
+          total_images: job.result.images.length,
+          prompt_id: job.result.promptId,
+          node: job.result.node,
+          display_node: job.result.displayNode,
+          node_history: job.result.nodeHistory.map((h) => ({
+            ...h,
+            executedAt: h.executedAt.toISOString(),
+          })),
+          parameters: job.parameters,
+          // Include structured outputs if available
+          outputs: job.result.outputs,
+        }
+
+        // Build resources for all images
+        const resources = job.result.images.map((image, index) => ({
+          type: 'resource' as const,
+          resource: {
+            text: `Generated image ${index + 1}/${job.result!.images.length}`,
+            uri: image.s3Url || image.url!,
+          },
+        }))
+
+        return {
+          content: [
+            // Metadata as text
+            {
+              type: 'text',
+              text: JSON.stringify(metadata, null, 2),
+            },
+            // All image resources
+            ...resources,
+          ],
+        }
+      }
+
+      // For failed jobs, return error information
+      if (job.status === 'failed') {
+        const response = {
+          job_id: job.jobId,
+          service: job.service,
+          status: job.status,
+          created_at: job.createdAt.toISOString(),
+          started_at: job.startedAt?.toISOString(),
+          completed_at: job.completedAt?.toISOString(),
+          error: job.error,
+          parameters: job.parameters,
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(response, null, 2),
+            },
+          ],
+        }
+      }
+
+      // For timeout or cancelled jobs
       const response = {
         job_id: job.jobId,
         service: job.service,
@@ -421,22 +534,7 @@ export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
         created_at: job.createdAt.toISOString(),
         started_at: job.startedAt?.toISOString(),
         completed_at: job.completedAt?.toISOString(),
-        progress: job.progress
-          ? {
-              ...job.progress,
-              timestamp: job.progress.timestamp.toISOString(),
-            }
-          : undefined,
         parameters: job.parameters,
-        result: job.result
-          ? {
-              ...job.result,
-              nodeHistory: job.result.nodeHistory.map((h) => ({
-                ...h,
-                executedAt: h.executedAt.toISOString(),
-              })),
-            }
-          : undefined,
         error: job.error,
       }
 
@@ -451,7 +549,7 @@ export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
     },
   })
 
-  logger.info('Tool registered: query_job_status')
+  logger.info('Tool registered: query_job (unified status and result query)')
 
   // List Jobs
   server.addTool({
@@ -510,106 +608,6 @@ export function registerComfyUITools(server: FastMCP, jobManager: JobManager) {
   })
 
   logger.info('Tool registered: list_jobs')
-
-  // Get Job Result
-  server.addTool({
-    name: 'get_job_result',
-    description: 'Get the result of a completed job (images, metadata, etc.)',
-    parameters: z.object({
-      job_id: z.string().describe('The job ID to get results for'),
-    }),
-    execute: async (args) => {
-      const job = jobManager.getJob(args.job_id)
-
-      if (!job) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({ error: 'Job not found', job_id: args.job_id }, null, 2),
-            },
-          ],
-        }
-      }
-
-      if (job.status !== 'completed') {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  error: 'Job not completed',
-                  job_id: args.job_id,
-                  current_status: job.status,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        }
-      }
-
-      if (!job.result) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  error: 'Job completed but no result available',
-                  job_id: args.job_id,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        }
-      }
-
-      // Build metadata
-      const metadata = {
-        job_id: job.jobId,
-        service: job.service,
-        status: job.status,
-        execution_time: `${job.result.executionTime}ms`,
-        total_images: job.result.images.length,
-        prompt_id: job.result.promptId,
-        node: job.result.node,
-        display_node: job.result.displayNode,
-        node_history: job.result.nodeHistory.map((h) => ({
-          ...h,
-          executedAt: h.executedAt.toISOString(),
-        })),
-        parameters: job.parameters,
-      }
-
-      // Build resources for all images
-      const resources = job.result.images.map((image, index) => ({
-        type: 'resource' as const,
-        resource: {
-          text: `Generated image ${index + 1}/${job.result!.images.length}`,
-          uri: image.s3Url || image.url!,
-        },
-      }))
-
-      return {
-        content: [
-          // Metadata as text
-          {
-            type: 'text',
-            text: JSON.stringify(metadata, null, 2),
-          },
-          // All image resources
-          ...resources,
-        ],
-      }
-    },
-  })
-
-  logger.info('Tool registered: get_job_result')
 
   // ============================================================================
   // Health Check Tool (Enhanced)

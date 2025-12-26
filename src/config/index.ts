@@ -46,12 +46,26 @@ const ServiceParameterSchema = z.object({
   comfyui_widget_name: z.string(),
 })
 
+const ServiceOutputSourceSchema = z.object({
+  node_id: z.string(),
+  output_type: z.enum(['images', 'video', 'mesh', 'audio', 'text']).optional(),
+  index: z.number().optional(),
+})
+
+const ServiceOutputSchema = z.object({
+  name: z.string(),
+  type: z.enum(['image', 'video', '3d_model', 'audio', 'text', 'json']),
+  description: z.string().optional(),
+  source: ServiceOutputSourceSchema,
+})
+
 const ServiceConfigSchema = z.object({
   name: z.string(),
   description: z.string().default(''),
   route: z.string().optional(),
   comfyui_workflow_api: z.string(),
   parameters: z.array(ServiceParameterSchema).default([]),
+  outputs: z.array(ServiceOutputSchema).optional(),
 })
 
 const JobConfigSchema = z
@@ -100,6 +114,7 @@ export interface ServiceConfig {
   route?: string
   comfyuiWorkflowApi: string
   parameters: ServiceParameter[]
+  outputs?: ServiceOutput[]
 }
 
 export interface ServiceParameter {
@@ -110,6 +125,19 @@ export interface ServiceParameter {
   default?: any
   comfyuiNodeId: string
   comfyuiWidgetName: string
+}
+
+export interface ServiceOutputSource {
+  nodeId: string
+  outputType?: 'images' | 'video' | 'mesh' | 'audio' | 'text'
+  index?: number
+}
+
+export interface ServiceOutput {
+  name: string
+  type: 'image' | 'video' | '3d_model' | 'audio' | 'text' | 'json'
+  description?: string
+  source: ServiceOutputSource
 }
 
 export interface JobConfig {
@@ -266,6 +294,16 @@ export function loadConfig(): Config {
           comfyuiNodeId: param.comfyui_node_id,
           comfyuiWidgetName: param.comfyui_widget_name,
         })),
+        outputs: service.outputs?.map((output) => ({
+          name: output.name,
+          type: output.type,
+          description: output.description ?? undefined,
+          source: {
+            nodeId: output.source.node_id,
+            outputType: output.source.output_type,
+            index: output.source.index,
+          },
+        })) ?? undefined,
       }
       if (service.route !== undefined) {
         result.route = service.route
