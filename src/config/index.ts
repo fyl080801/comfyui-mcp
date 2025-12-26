@@ -3,6 +3,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 import { z, ZodError } from 'zod'
+import logger from '../logger/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -62,9 +63,9 @@ const JobConfigSchema = z
   .optional()
 
 const ConfigFileSchema = z.object({
-  comfyui: ComfyUIConfigSchema,
+  comfyui: ComfyUIConfigSchema.optional(),
   s3: S3ConfigFileSchema.optional(),
-  jobs: JobConfigSchema,
+  jobs: JobConfigSchema.optional(),
   services: z.array(ServiceConfigSchema).default([]),
 })
 
@@ -154,17 +155,20 @@ function loadConfigFile(): z.infer<typeof ConfigFileSchema> {
   const projectRoot = path.join(__dirname, '..', '..')
   const configPath = path.join(projectRoot, 'config.json')
 
-  // Require config.json to exist - don't auto-copy
+  // If config.json doesn't exist, return default values
   if (!fs.existsSync(configPath)) {
-    throw new Error(
-      'config.json not found. Please provide a config file. You can copy config.example.json as a template.'
-    )
+    logger.warn('config.json not found. Using default configuration.')
+    return ConfigFileSchema.parse({})
   }
 
-  const configFile = fs.readFileSync(configPath, 'utf-8')
-  const parsed = JSON.parse(configFile)
-
-  return ConfigFileSchema.parse(parsed)
+  try {
+    const configFile = fs.readFileSync(configPath, 'utf-8')
+    const parsed = JSON.parse(configFile)
+    return ConfigFileSchema.parse(parsed)
+  } catch (error) {
+    logger.warn('Failed to parse config.json. Using default configuration.', error)
+    return ConfigFileSchema.parse({})
+  }
 }
 
 /**
@@ -209,12 +213,12 @@ export function loadConfig(): Config {
     // ComfyUI Configuration with env override
     const comfyuiAddress = getEnvOrConfig(
       'COMFYUI_ADDRESS',
-      fileConfig.comfyui.address,
+      fileConfig.comfyui?.address,
       'http://127.0.0.1:8188'
     )
     const comfyuiClientId = getEnvOrConfig(
       'COMFYUI_CLIENT_ID',
-      fileConfig.comfyui.client_id,
+      fileConfig.comfyui?.client_id,
       'comfyui-mcp-client'
     )
 

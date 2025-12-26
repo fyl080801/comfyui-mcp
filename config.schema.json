@@ -3,7 +3,7 @@
   "title": "ComfyUI MCP Server Configuration",
   "description": "Configuration schema for ComfyUI MCP server",
   "type": "object",
-  "required": ["comfyui", "services"],
+  "required": ["services"],
   "properties": {
     "comfyui": {
       "type": "object",

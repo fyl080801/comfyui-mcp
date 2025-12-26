@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: comfyui-mcp-ingress
+  namespace: dev
+  labels:
+    app: comfyui-mcp
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # CORS support (optional)
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    # Timeouts for long-running MCP requests
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    # WebSocket support (if needed for future enhancements)
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/upgrade: "websocket"
+    # Buffer sizes
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+spec:
+  ingressClassName: nginx
+  rules:
+    # HTTP rule
+    - host: comfyui-mcp.example.com  # Replace with your actual domain
+      http:
+        paths:
+          # MCP endpoint - maps /mcp and /mcp/* to port 8080
+          - path: /mcp(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: comfyui-mcp
+                port:
+                  number: 8080
+          # Root path - maps / to port 8080 (or change to 3000 for Express)
+          - path: /()(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: comfyui-mcp
+                port:
+                  number: 8080
+  # TLS configuration (optional - uncomment and configure for HTTPS)
+  # tls:
+  #   - hosts:
+  #       - comfyui-mcp.example.com
+  #     secretName: comfyui-mcp-tls

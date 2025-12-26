@@ -1,0 +1,266 @@
+---
+# Service for ComfyUI-MCP
+apiVersion: v1
+kind: Service
+metadata:
+  name: comfyui-mcp
+  namespace: dev
+  labels:
+    app: comfyui-mcp
+  annotations:
+    # Use this annotation if using Istio service mesh
+    # sidecar.istio.io/inject: "true"
+spec:
+  type: ClusterIP
+  selector:
+    app: comfyui-mcp
+  ports:
+    - name: mcp
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: express
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+
+---
+# Deployment for ComfyUI-MCP
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comfyui-mcp
+  namespace: dev
+  labels:
+    app: comfyui-mcp
+    version: v1
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: comfyui-mcp
+  template:
+    metadata:
+      labels:
+        app: comfyui-mcp
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Use non-root user for security
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: comfyui-mcp
+          image: harbor-core.harbor.svc/ai-apps/comfyui-mcp:latest
+          imagePullPolicy: Always
+          ports:
+            - name: mcp
+              containerPort: 8080
+              protocol: TCP
+            - name: express
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # ComfyUI Configuration
+            - name: COMFYUI_ADDRESS
+              value: "http://comfyui:8188"
+            - name: COMFYUI_CLIENT_ID
+              value: "comfyui-mcp-client"
+
+            # Node Environment
+            - name: NODE_ENV
+              value: "production"
+            - name: EXPRESS_PORT
+              value: "3000"
+
+            # Job Configuration (optional - override config.json)
+            - name: JOB_MAX_JOB_AGE
+              value: "86400000"
+            - name: JOB_MAX_JOBS
+              value: "1000"
+            - name: JOB_CLEANUP_INTERVAL
+              value: "3600000"
+
+            # S3 Configuration (optional - use from secret in production)
+            # - name: S3_ENABLE
+            #   value: "true"
+            # - name: AWS_ACCESS_KEY_ID
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-credentials
+            #       key: access-key-id
+            # - name: AWS_SECRET_ACCESS_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-credentials
+            #       key: secret-access-key
+
+          envFrom:
+            # Optionally load from ConfigMap or Secret
+            # - configMapRef:
+            #     name: comfyui-mcp-config
+            # - secretRef:
+            #     name: comfyui-mcp-secrets
+
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
+            - name: workflows
+              mountPath: /app/workflow_api
+              readOnly: true
+
+          livenessProbe:
+            httpGet:
+              path: /mcp
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /mcp
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+
+      volumes:
+        - name: config
+          configMap:
+            name: comfyui-mcp-config
+        - name: workflows
+          configMap:
+            name: comfyui-mcp-workflows
+            optional: true
+
+      imagePullSecrets:
+        - name: harbor-auth
+
+---
+# ConfigMap for configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: comfyui-mcp-config
+  namespace: dev
+data:
+  config.json: |
+    {
+      "$schema": "./config.schema.json",
+      "comfyui": {
+        "address": "http://comfyui:8188",
+        "client_id": "comfyui-mcp-client"
+      },
+      "s3": {
+        "bucket": "your-s3-bucket-name",
+        "region": "us-east-1",
+        "endpoint": "",
+        "public_domain": "",
+        "enable_path_style": false
+      },
+      "jobs": {
+        "max_job_age": 86400000,
+        "max_jobs": 1000,
+        "cleanup_interval": 3600000
+      },
+      "services": [
+        {
+          "name": "text_to_image",
+          "description": "Generate images from text prompts using ComfyUI",
+          "comfyui_workflow_api": "text_to_image",
+          "parameters": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "description": "The text prompt for image generation",
+              "required": true,
+              "comfyui_node_id": "6",
+              "comfyui_widget_name": "text"
+            },
+            {
+              "name": "negative_prompt",
+              "type": "string",
+              "description": "Negative prompt for things to avoid in the image",
+              "required": false,
+              "comfyui_node_id": "7",
+              "comfyui_widget_name": "text"
+            },
+            {
+              "name": "seed",
+              "type": "number",
+              "description": "Random seed for generation (use -1 for random)",
+              "required": false,
+              "default": -1,
+              "comfyui_node_id": "3",
+              "comfyui_widget_name": "seed"
+            }
+          ]
+        }
+      ]
+    }
+
+---
+# HorizontalPodAutoscaler (optional - for scaling based on CPU/Memory)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: comfyui-mcp-hpa
+  namespace: dev
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: comfyui-mcp
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# PodDisruptionBudget (optional - for high availability)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: comfyui-mcp-pdb
+  namespace: dev
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: comfyui-mcp
