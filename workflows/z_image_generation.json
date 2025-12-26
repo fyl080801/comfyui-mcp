@@ -1,0 +1,110 @@
+{
+  "1": {
+    "inputs": {
+      "seed": 188711235011244,
+      "steps": 15,
+      "cfg": 3.5,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["2", 0],
+      "positive": ["3", 0],
+      "negative": ["25", 0],
+      "latent_image": ["6", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "2": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "3": {
+    "inputs": {
+      "text": "",
+      "clip": ["5", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "5": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "6": {
+    "inputs": {
+      "width": 512,
+      "height": 768,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "7": {
+    "inputs": {
+      "samples": ["1", 0],
+      "vae": ["8", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "8": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "25": {
+    "inputs": {
+      "conditioning": ["3", 0]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "38": {
+    "inputs": {
+      "filename_prefix": "z-image",
+      "images": ["7", 0]
+    },
+    "class_type": "SaveImageS3",
+    "_meta": {
+      "title": "Save Image to S3"
+    }
+  },
+  "39": {
+    "inputs": {
+      "string": ["38", 0],
+      "strip_newlines": true
+    },
+    "class_type": "StringConstantMultiline",
+    "_meta": {
+      "title": "outputs"
+    }
+  }
+}

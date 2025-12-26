@@ -229,15 +229,12 @@ export function createWorkflowRouter(): Router {
         })
       }
 
-      // Use original filename or generate from metadata
-      const metadata = (content as any)._metadata || {}
-      const name = metadata.name || req.file.originalname.replace('.json', '')
-      const description = metadata.description
+      // Use original filename
+      const name = req.file.originalname.replace('.json', '')
       const filename = req.file.originalname
 
       const options: CreateWorkflowOptions = {
         name,
-        description,
         content,
         filename,
       }

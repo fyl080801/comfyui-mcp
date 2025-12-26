@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws'
-import axios from '../http-client.js'
+import { axiosInstance } from '../http-client.js'
 import type { AxiosError } from 'axios'
 import { getComfyUIConfig } from '../config/index.js'
 import { jsonTryParse } from '../utils/helpers.js'
@@ -69,7 +69,7 @@ export class ComfyuiWebsocket {
   private async executeGen(prompt: any): Promise<void> {
     try {
       const comfyuiConfig = getComfyUIConfig()
-      const response = await axios.post(
+      const response = await axiosInstance.post(
         `${comfyuiConfig.httpProtocol}://${this.host}/prompt`,
         {
           client_id: this.clientId,

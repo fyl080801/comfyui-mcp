@@ -224,6 +224,29 @@ async function processOutputImages(
 // ============================================================================
 
 /**
+ * Clean workflow by removing metadata fields that ComfyUI doesn't recognize
+ * Filters out _metadata and other non-node properties
+ */
+function cleanWorkflow(workflow: Record<string, any>): Record<string, any> {
+  const cleaned: Record<string, any> = {}
+
+  for (const [key, value] of Object.entries(workflow)) {
+    // Skip metadata fields (keys starting with _)
+    if (key.startsWith('_')) {
+      continue
+    }
+
+    // Only include numeric node IDs (ComfyUI convention)
+    // Also allow any key that has a class_type property (valid node)
+    if (typeof value === 'object' && value !== null && 'class_type' in value) {
+      cleaned[key] = value
+    }
+  }
+
+  return cleaned
+}
+
+/**
  * Execute a ComfyUI job asynchronously
  * Exported for use by REST API routes
  */
@@ -256,12 +279,15 @@ export async function executeJobAsync(
   )
 
   try {
+    // Clean workflow to remove metadata fields
+    const cleanedWorkflow = cleanWorkflow(workflow)
+
     // Find end node
-    const endNode = findSaveImageNode(workflow)
+    const endNode = findSaveImageNode(cleanedWorkflow)
 
     // Execute with job tracking
     const result = await ws.executeWithJobTracking({
-      prompt: workflow,
+      prompt: cleanedWorkflow,
       end: endNode,
     })
 

@@ -100,13 +100,12 @@ export class WorkflowManager {
       const filePath = path.join(this.workflowsDir, file)
       const stats = fs.statSync(filePath)
       const content = this.readWorkflowFile(file)
-      const metadata = this.extractMetadata(content)
 
       return {
         id: this.filenameToId(file),
-        name: metadata.name || this.filenameToName(file),
+        name: this.filenameToName(file),
         filename: file,
-        description: metadata.description,
+        description: undefined,
         createdAt: stats.birthtime.toISOString(),
         updatedAt: stats.mtime.toISOString(),
         size: stats.size,
@@ -139,13 +138,12 @@ export class WorkflowManager {
 
     const content = this.readWorkflowFile(filename)
     const stats = fs.statSync(filePath)
-    const metadata = this.extractMetadata(content)
 
     return {
       id,
-      name: metadata.name || this.filenameToName(filename),
+      name: this.filenameToName(filename),
       filename,
-      description: metadata.description,
+      description: undefined,
       createdAt: stats.birthtime.toISOString(),
       updatedAt: stats.mtime.toISOString(),
       size: stats.size,
@@ -179,18 +177,8 @@ export class WorkflowManager {
       throw new Error(`Workflow already exists: ${workflowFilename}`)
     }
 
-    // Add metadata to workflow content
-    const workflowContent = {
-      ...content,
-      _metadata: {
-        name,
-        description: description || '',
-        createdAt: new Date().toISOString(),
-      },
-    }
-
-    // Write workflow file
-    fs.writeFileSync(filePath, JSON.stringify(workflowContent, null, 2), 'utf-8')
+    // Write workflow file as-is (no extra metadata)
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf-8')
 
     logger.info(`Created workflow: ${workflowFilename}`)
 
@@ -207,7 +195,7 @@ export class WorkflowManager {
       updatedAt: stats.mtime.toISOString(),
       size: stats.size,
       nodeCount: Object.keys(content).length,
-      content: workflowContent,
+      content: content,
     }
   }
 
@@ -223,31 +211,15 @@ export class WorkflowManager {
     }
 
     const existingContent = this.readWorkflowFile(filename)
-    const existingMetadata = this.extractMetadata(existingContent)
 
-    // Update fields
-    const updatedName = options.name || existingMetadata.name || this.filenameToName(filename)
-    const updatedDescription = options.description !== undefined
-      ? options.description
-      : existingMetadata.description
+    // Use provided content or keep existing
     const updatedContent = options.content || existingContent
 
-    // Remove _metadata from content
+    // Remove any _metadata field if present
     const { _metadata, ...contentOnly } = updatedContent as any
 
-    // Add updated metadata
-    const workflowContent = {
-      ...contentOnly,
-      _metadata: {
-        name: updatedName,
-        description: updatedDescription || '',
-        createdAt: existingMetadata.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    }
-
-    // Write updated workflow file
-    fs.writeFileSync(filePath, JSON.stringify(workflowContent, null, 2), 'utf-8')
+    // Write updated workflow file as-is (no extra metadata)
+    fs.writeFileSync(filePath, JSON.stringify(contentOnly, null, 2), 'utf-8')
 
     logger.info(`Updated workflow: ${filename}`)
 
@@ -256,14 +228,14 @@ export class WorkflowManager {
 
     return {
       id,
-      name: updatedName,
+      name: options.name || this.filenameToName(filename),
       filename,
-      description: updatedDescription,
+      description: options.description,
       createdAt: stats.birthtime.toISOString(),
       updatedAt: stats.mtime.toISOString(),
       size: stats.size,
       nodeCount: Object.keys(contentOnly).length,
-      content: workflowContent,
+      content: contentOnly,
     }
   }
 
@@ -312,24 +284,6 @@ export class WorkflowManager {
     const filePath = path.join(this.workflowsDir, filename)
     const content = fs.readFileSync(filePath, 'utf-8')
     return JSON.parse(content)
-  }
-
-  /**
-   * Extract metadata from workflow content
-   */
-  private extractMetadata(content: Record<string, any>): {
-    name?: string
-    description?: string
-    createdAt?: string
-    updatedAt?: string
-  } {
-    const metadata = (content as any)._metadata || {}
-    return {
-      name: metadata.name,
-      description: metadata.description,
-      createdAt: metadata.createdAt,
-      updatedAt: metadata.updatedAt,
-    }
   }
 
   /**
