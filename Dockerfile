@@ -44,6 +44,10 @@ RUN npm ci --only=production && npm cache clean --force
 COPY --from=builder --chown=comfyui:comfyui /app/dist ./dist
 COPY --from=builder --chown=comfyui:comfyui /app/config*.json ./
 
+# Create logs directory with proper permissions before switching user
+RUN mkdir -p /app/logs && \
+    chown -R comfyui:comfyui /app/logs
+
 # Switch to non-root user
 USER comfyui
 
