@@ -153,16 +153,12 @@ function getEnvOrConfig<T>(envKey: string, configValue: T | undefined, defaultVa
 function loadConfigFile(): z.infer<typeof ConfigFileSchema> {
   const projectRoot = path.join(__dirname, '..', '..')
   const configPath = path.join(projectRoot, 'config.json')
-  const exampleConfigPath = path.join(projectRoot, 'config.example.json')
 
-  // Copy example config if config.json doesn't exist
+  // Require config.json to exist - don't auto-copy
   if (!fs.existsSync(configPath)) {
-    if (fs.existsSync(exampleConfigPath)) {
-      fs.copyFileSync(exampleConfigPath, configPath)
-      console.log(`✅ Created config.json from config.example.json`)
-    } else {
-      throw new Error('Neither config.json nor config.example.json found')
-    }
+    throw new Error(
+      'config.json not found. Please provide a config file. You can copy config.example.json as a template.'
+    )
   }
 
   const configFile = fs.readFileSync(configPath, 'utf-8')
